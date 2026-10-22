@@ -18,6 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Libérer de la place disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -47,6 +52,13 @@ jobs:
           BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
           export CC_aarch64_linux_android="$BIN/aarch64-linux-android31-clang"
           export CXX_aarch64_linux_android="$BIN/aarch64-linux-android31-clang++"
+          # perfetto-sdk-sys cherche un `clang++` du système si la variable CXX est absente,
+          # ce qui compile sans les en-têtes Android. On la définit pour le forcer sur le NDK,
+          # et on garde g++ pour les outils qui tournent sur la machine de build.
+          export CXX="$BIN/aarch64-linux-android31-clang++"
+          export CXX_x86_64_unknown_linux_gnu=g++
+          export HOST_CXX=g++
+          export RUST_BACKTRACE=1
           export AR_aarch64_linux_android="$BIN/llvm-ar"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android31-clang"
           cargo build -p iw4l-android --profile play --target aarch64-linux-android
