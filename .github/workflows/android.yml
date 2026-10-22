@@ -1,0 +1,106 @@
+# Compile l'APK IW4LJ (Android, arm64) sur les serveurs GitHub.
+# Port Linux du script IW4LJ-Android/crates/android/package.ps1.
+# Non testé : au premier échec, envoyer le log de l'étape en rouge.
+#
+# À placer dans le fork : .github/workflows/android.yml
+# Lancer : onglet Actions -> "Build Android APK" -> Run workflow.
+# Résultat : section "Artifacts" en bas de la page du run (IW4LJ-fresh-build.zip).
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "IW4LJ-Android -> target"
+
+      - name: Paquets système
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config zip
+
+      - name: SDK et NDK Android
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;28.2.13676358"
+
+      - name: Compiler la bibliothèque Rust
+        working-directory: IW4LJ-Android
+        run: |
+          NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$BIN/aarch64-linux-android31-clang"
+          export CXX_aarch64_linux_android="$BIN/aarch64-linux-android31-clang++"
+          export AR_aarch64_linux_android="$BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android31-clang"
+          cargo build -p iw4l-android --profile play --target aarch64-linux-android
+
+      - name: Clé de signature (réutilisée d'un build à l'autre)
+        uses: actions/cache@v4
+        with:
+          path: ks
+          key: iw4l-keystore-v1
+
+      - name: Assembler et signer l'APK
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          BT="$ANDROID_HOME/build-tools/34.0.0"
+          JAR="$ANDROID_HOME/platforms/android-34/android.jar"
+          C="IW4LJ-Android/crates/android"
+          SO="IW4LJ-Android/target/aarch64-linux-android/play/libiw4l_android.so"
+          B="$PWD/build"
+          mkdir -p "$B/classes" "$B/dex" "$B/stage/lib/arm64-v8a" ks
+
+          javac -source 17 -target 17 -classpath "$JAR" -d "$B/classes" \
+            "$C"/android/java/dev/iw4j/iw4l/*.java
+          jar cf "$B/classes.jar" -C "$B/classes" .
+          "$BT/d8" --lib "$JAR" --min-api 31 --output "$B/dex" "$B/classes.jar"
+
+          "$BT/aapt2" compile --dir "$C/res" -o "$B/res.zip"
+          "$BT/aapt2" link -o "$B/base.apk" -I "$JAR" \
+            --manifest "$C/android/AndroidManifest.xml" \
+            --min-sdk-version 31 --target-sdk-version 34 "$B/res.zip"
+
+          "$BIN/llvm-strip" --strip-all -o "$B/stage/lib/arm64-v8a/libiw4l_android.so" "$SO"
+          cp "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
+            "$B/stage/lib/arm64-v8a/"
+          cp "$B/dex/classes.dex" "$B/stage/"
+
+          # Bibliothèques stockées sans compression, comme dans package.ps1.
+          (cd "$B/stage" && zip -0 -r ../base.apk classes.dex lib)
+          "$BT/zipalign" -p -f 4 "$B/base.apk" "$B/aligned.apk"
+
+          if [ ! -f ks/iw4l.keystore ]; then
+            keytool -genkeypair -keystore ks/iw4l.keystore -alias iw4l \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass iw4l-ci-pass -keypass iw4l-ci-pass -dname "CN=IW4LJ CI"
+          fi
+          "$BT/apksigner" sign --ks ks/iw4l.keystore --ks-pass pass:iw4l-ci-pass \
+            --ks-key-alias iw4l --key-pass pass:iw4l-ci-pass \
+            --out "$B/IW4LJ-fresh.apk" "$B/aligned.apk"
+          "$BT/apksigner" verify --verbose "$B/IW4LJ-fresh.apk"
+          ls -l "$B/IW4LJ-fresh.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IW4LJ-fresh-build
+          path: build/IW4LJ-fresh.apk
+          if-no-files-found: error
