@@ -364,6 +364,7 @@ fn place_bots(
     mut actions: ResMut<ClientActionInbox>,
     mut request_ids: ResMut<net::ActionRequestIds>,
     world: Option<Res<AuthorityWorld>>,
+    roster: Res<BotRoster>,
     mut tick: Local<u32>,
 ) {
     if placements.0.is_empty() {
@@ -386,9 +387,15 @@ fn place_bots(
             .meta
             .for_client(placement.id)
             .is_some_and(|meta| meta.lifecycle == ClientLifecycle::Alive);
-        let pinned_out = placement
-            .placed_at
-            .is_some_and(|at| placement.waited.saturating_sub(at) > PIN_POLLS);
+        // A bot that walks is stood once, then let go; it keeps one hit point.
+        let walks = roster
+            .bots
+            .iter()
+            .any(|bot| bot.id == placement.id && bot.brain.is_some());
+        let pinned_out = !walks
+            && placement
+                .placed_at
+                .is_some_and(|at| placement.waited.saturating_sub(at) > PIN_POLLS);
         if pinned_out {
             return false;
         }
@@ -410,7 +417,10 @@ fn place_bots(
         let away = dx * dx + dy * dy + dz * dz > 12.0 * 12.0;
         // Once a second at most, and only when the bot is not where it belongs
         // (a new round puts it back on its own spawn).
-        if away && placement.waited.saturating_sub(placement.last_move) >= 10 {
+        if away
+            && !(walks && placement.placed_at.is_some())
+            && placement.waited.saturating_sub(placement.last_move) >= 10
+        {
             placement.last_move = placement.waited;
             let request_id = request_ids.allocate();
             if let Err(error) = actions.push(
@@ -650,6 +660,10 @@ fn think_bots(mut p: ThinkBots) {
         } else {
             continue;
         };
+        // A trickshot bot walks but does not shoot back.
+        if bot.brain.is_some() && BotRoster::passive() {
+            cmd.buttons &= !playerstate_iw4::buttons::ATTACK;
+        }
         if fires.iter().any(|target| match target {
             BotTpTarget::All => true,
             BotTpTarget::Id(id) => *id == bot.id,

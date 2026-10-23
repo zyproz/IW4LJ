@@ -122,6 +122,17 @@ impl BotAddQueue {
         });
     }
 
+    /// One bot that walks the map like any other bot, but starts at origin
+    /// facing angles (a trickshot target that moves).
+    pub fn push_mover_at(&mut self, origin: [f32; 3], angles: [f32; 3]) {
+        self.0.push(BotAddRequest {
+            count: 1,
+            dummy: false,
+            side: Some(BotSide::Enemy),
+            at: Some((origin, angles)),
+        });
+    }
+
     pub fn drain(&mut self) -> Vec<BotAddRequest> {
         core::mem::take(&mut self.0)
     }
@@ -129,6 +140,10 @@ impl BotAddQueue {
 
 #[derive(Resource, Debug, Default, Clone, Copy)]
 pub struct BotHold(pub bool);
+
+/// Trickshot bots walk but do not shoot back: set by `botmove`, cleared by
+/// `botfreeze` and `trickshot off`.
+static BOTS_PASSIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Bots waiting to be stood where they were asked to be. A bot is not alive
 /// the moment it is minted, and a move is refused until it is.
@@ -238,6 +253,33 @@ impl Default for BotRoster {
 }
 
 impl BotRoster {
+    pub fn set_passive(on: bool) {
+        BOTS_PASSIVE.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn passive() -> bool {
+        BOTS_PASSIVE.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Make every bot walk the map (give it a brain) or stand still (take it
+    /// away). Returns how many bots changed.
+    pub fn set_all_moving(&mut self, moving: bool) -> usize {
+        let seed = self.seed;
+        let mut changed = 0;
+        for bot in &mut self.bots {
+            if moving && bot.brain.is_none() {
+                bot.brain = Some(HostController::new(seed ^ (u64::from(bot.id.0) << 32)));
+                bot.last_cmd = None;
+                changed += 1;
+            } else if !moving && bot.brain.is_some() {
+                bot.brain = None;
+                bot.last_cmd = None;
+                changed += 1;
+            }
+        }
+        changed
+    }
+
     pub fn is_bot(&self, id: ClientId) -> bool {
         self.bots.iter().any(|bot| bot.id == id)
     }

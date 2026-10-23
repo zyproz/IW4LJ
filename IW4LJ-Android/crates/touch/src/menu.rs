@@ -166,7 +166,7 @@ fn locked(tab: usize, item: usize) -> bool {
         && TABS[tab].name == "TRICKSHOT"
         && matches!(
             TABS[tab].items[item].label,
-            "SAVE POSITION" | "LOAD POSITION" | "SPAWN AT SAVED" | "NOCLIP" | "PAD SAVE/LOAD" | "BOT HERE"
+            "SAVE POSITION" | "LOAD POSITION" | "SPAWN AT SAVED" | "NOCLIP" | "PAD SAVE/LOAD" | "BOT HERE" | "FREEZE BOT"
         )
 }
 
@@ -235,7 +235,7 @@ const TABS: [Tab; 8] = [
     },
     Tab {
         name: "TRICKSHOT",
-        hint: "Create the game with TRICKSHOT GAME in the main menu. SAVE POSITION, LOAD POSITION, NOCLIP, PAD SAVE/LOAD and BOT HERE are for VIP. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
+        hint: "Create the game with TRICKSHOT GAME in the main menu. MOVE BOT makes the bot walk the map; SAVE POSITION, LOAD POSITION, NOCLIP, PAD SAVE/LOAD, BOT HERE and FREEZE BOT are for VIP. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
         items: &[
             line("SAVE POSITION", "save"),
             line("LOAD POSITION", "load"),
@@ -245,6 +245,8 @@ const TABS: [Tab; 8] = [
             toggle("PAD SAVE/LOAD", 5, "", ""),
             toggle("EXPLOSIVE BULLETS", 6, "explosivebullets on", "explosivebullets off"),
             line("BOT HERE", "stillbot"),
+            line("MOVE BOT", "botmove"),
+            line("FREEZE BOT", "botfreeze"),
             line("NEXT KILL WINS", "lastkill"),
             line("TRICKSHOT S&D", "trickshot"),
             line("BOTS TO 1 HP", "bothp 1"),

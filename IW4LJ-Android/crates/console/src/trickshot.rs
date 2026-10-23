@@ -44,6 +44,14 @@ pub(crate) fn register_trickshot_commands(registry: &mut ConsoleRegistry) {
             "stillbot — add a bot that never moves or shoots, standing where you are now (needs cheats)",
         ),
         (
+            "botmove",
+            "botmove — the bot walks the map and does not shoot back; with no bot, one walking bot joins beside you (needs cheats)",
+        ),
+        (
+            "botfreeze",
+            "botfreeze — every bot stands still where it is (needs cheats)",
+        ),
+        (
             "bothp",
             "bothp [hp] — set every bot to this many hit points (default 1), yourself untouched (needs cheats)",
         ),
@@ -77,8 +85,8 @@ pub(crate) fn route_trickshot_commands(
     mut bot_add: ResMut<bots::BotAddQueue>,
     mut looping: ResMut<frame::TrickshotLoop>,
     mut lives: MessageReader<frame::LifeStarted>,
-    (roster, mut bot_tp): (
-        Option<Res<bots::BotRoster>>,
+    (mut roster, mut bot_tp): (
+        Option<ResMut<bots::BotRoster>>,
         Option<ResMut<bots::BotTpQueue>>,
     ),
     mut inbox: Option<ResMut<net::ClientActionInbox>>,
@@ -116,7 +124,12 @@ pub(crate) fn route_trickshot_commands(
                 // that one here instead of adding another.
                 let existing = roster
                     .as_deref()
-                    .and_then(|roster| roster.bots.iter().find(|bot| bot.brain.is_none()))
+                    .and_then(|roster| {
+                        roster
+                            .bots
+                            .iter()
+                            .find(|bot| bot.brain.is_none() || bots::BotRoster::passive())
+                    })
                     .map(|bot| bot.id);
                 if let (Some(id), Some(tp)) = (existing, bot_tp.as_deref_mut()) {
                     tp.push(bots::BotTpRequest {
@@ -127,11 +140,62 @@ pub(crate) fn route_trickshot_commands(
                             pitch: Some(0.0),
                         },
                     });
+                    // The bot that was walking stops where you put it.
+                    bots::BotRoster::set_passive(false);
+                    if let Some(roster) = roster.as_deref_mut() {
+                        roster.set_all_moving(false);
+                    }
                     echo("stillbot: the frozen bot moves to your position".into());
                 } else {
                     bot_add.push_dummy_at(origin, angles);
                     echo("stillbot: a frozen bot is joining at your position".into());
                 }
+            }
+            "botmove" => {
+                if authority.as_deref().is_some_and(|a| !a.0.cheats_enabled()) {
+                    echo("botmove: cheats are off".into());
+                    continue;
+                }
+                let has_bots = roster.as_deref().is_some_and(|roster| !roster.bots.is_empty());
+                if has_bots {
+                    bots::BotRoster::set_passive(true);
+                    if let Some(roster) = roster.as_deref_mut() {
+                        roster.set_all_moving(true);
+                    }
+                    queue.push_line("bothp 1");
+                    echo("botmove: the bot walks the map".into());
+                } else {
+                    let Some(ps) = presented.alive_player(local.0) else {
+                        echo("botmove: not alive — spawn a class first".into());
+                        continue;
+                    };
+                    let yaw = ps.viewangles[1].to_radians();
+                    let origin = [
+                        ps.origin[0] + yaw.cos() * 70.0,
+                        ps.origin[1] + yaw.sin() * 70.0,
+                        ps.origin[2],
+                    ];
+                    let angles = [0.0, (ps.viewangles[1] + 180.0) % 360.0, 0.0];
+                    looping.bot = Some((origin, angles));
+                    bots::BotRoster::set_passive(true);
+                    bot_add.push_mover_at(origin, angles);
+                    echo("botmove: a walking bot is joining beside you".into());
+                }
+            }
+            "botfreeze" => {
+                if authority.as_deref().is_some_and(|a| !a.0.cheats_enabled()) {
+                    echo("botfreeze: cheats are off".into());
+                    continue;
+                }
+                bots::BotRoster::set_passive(false);
+                let frozen = roster
+                    .as_deref_mut()
+                    .map_or(0, |roster| roster.set_all_moving(false));
+                echo(if frozen > 0 {
+                    format!("botfreeze: {frozen} bot(s) stand still")
+                } else {
+                    "botfreeze: no walking bot".to_owned()
+                });
             }
             "bothp" => {
                 if authority.as_deref().is_some_and(|a| !a.0.cheats_enabled()) {
@@ -239,6 +303,7 @@ pub(crate) fn route_trickshot_commands(
                 Some("off" | "0") => {
                     *setup = frame::MatchSetup::default();
                     *looping = frame::TrickshotLoop::default();
+                    bots::BotRoster::set_passive(false);
                     if let Some(authority) = authority.as_deref_mut() {
                         authority.0.set_gsc_dvar("iw4l_trickshot_loop", "0");
                     }
@@ -289,7 +354,11 @@ pub(crate) fn route_trickshot_commands(
             end_on_next_kill(authority);
         }
         if let Some((origin, angles)) = looping.bot {
-            bot_add.push_dummy_at(origin, angles);
+            if bots::BotRoster::passive() {
+                bot_add.push_mover_at(origin, angles);
+            } else {
+                bot_add.push_dummy_at(origin, angles);
+            }
         }
         looping.rearm = false;
         echo("trickshot: round restarted — the bot is back where it stood".into());
