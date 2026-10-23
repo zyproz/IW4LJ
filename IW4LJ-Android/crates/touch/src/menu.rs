@@ -112,6 +112,53 @@ const LAN_JOIN_LINES: &str = "openmenu find_lobbies; ui_browser_refresh";
 const LAN_HOST_DELAY: f32 = 1.0;
 const LAN_JOIN_DELAY: f32 = 7.0;
 
+/// What the player may use of the mod menu. Placeholder until signed licence
+/// keys: an empty folder named `admin` or `vip` next to `zone` and `main`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tier {
+    Free,
+    Vip,
+    Admin,
+}
+
+fn tier() -> Tier {
+    static TIER: std::sync::OnceLock<Tier> = std::sync::OnceLock::new();
+    *TIER.get_or_init(|| {
+        for root in [
+            "/sdcard/Android/media/dev.iw4j.iw4l/mw2",
+            "/storage/emulated/0/Android/media/dev.iw4j.iw4l/mw2",
+        ] {
+            let root = std::path::Path::new(root);
+            if root.join("admin").is_dir() {
+                return Tier::Admin;
+            }
+            if root.join("vip").is_dir() {
+                return Tier::Vip;
+            }
+        }
+        Tier::Free
+    })
+}
+
+/// A match someone else hosts (or without cheats) offers only the skin picker.
+/// Otherwise a free player has the trickshot tab in a match, and the trickshot
+/// and graphics tabs on the main menu; a VIP or admin has every tab.
+fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
+    if in_match && !cheats {
+        return name == "SKINS";
+    }
+    match tier {
+        Tier::Admin | Tier::Vip => true,
+        Tier::Free => {
+            if in_match {
+                name == "TRICKSHOT"
+            } else {
+                name == "TRICKSHOT" || name == "GRAPHICS"
+            }
+        }
+    }
+}
+
 struct Item {
     label: &'static str,
     act: Act,
@@ -177,7 +224,7 @@ const TABS: [Tab; 8] = [
     },
     Tab {
         name: "TRICKSHOT",
-        hint: "Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
+        hint: "From the main menu: TRICKSHOT S&D, then CREATE GAME. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
         items: &[
             line("SAVE POSITION", "save"),
             line("LOAD POSITION", "load"),
@@ -436,6 +483,8 @@ pub(crate) struct ModMenu {
     tab: usize,
     /// Only the skin picker is on offer (cheats are not on in this match).
     skins_only: bool,
+    /// Which tabs this player may use here (see [`tab_allowed`]).
+    allowed: [bool; TABS.len()],
     toggles: [bool; TOGGLES],
     render_height: i32,
     texture_skip: i32,
@@ -1023,13 +1072,23 @@ pub(crate) fn pad_menu(
         let cols = columns(menu.tab) as i32;
         step(&mut menu, -cols);
     }
-    if pressed(B::RightTrigger) && !menu.skins_only {
-        menu.tab = (menu.tab + 1) % TABS.len();
+    if pressed(B::RightTrigger) {
+        for _ in 0..TABS.len() {
+            menu.tab = (menu.tab + 1) % TABS.len();
+            if menu.allowed[menu.tab] {
+                break;
+            }
+        }
         menu.focus = 0;
         moved = true;
     }
-    if pressed(B::LeftTrigger) && !menu.skins_only {
-        menu.tab = (menu.tab + TABS.len() - 1) % TABS.len();
+    if pressed(B::LeftTrigger) {
+        for _ in 0..TABS.len() {
+            menu.tab = (menu.tab + TABS.len() - 1) % TABS.len();
+            if menu.allowed[menu.tab] {
+                break;
+            }
+        }
         menu.focus = 0;
         moved = true;
     }
@@ -1194,11 +1253,23 @@ pub(crate) fn update(
     authority: Option<Res<net::AuthorityWorld>>,
 ) {
     menu.skins_only = crate::skins_only(screen.as_deref(), authority.as_deref());
-    if menu.skins_only
-        && let Some(skins) = TABS.iter().position(|tab| tab.name == "SKINS")
-        && menu.tab != skins
+    let in_match = screen.as_deref().is_some_and(|screen| {
+        matches!(
+            screen,
+            frame::AppScreen::ClassSelect | frame::AppScreen::InGame
+        )
+    });
+    let cheats = authority
+        .as_deref()
+        .is_some_and(|authority| authority.0.cheats_enabled());
+    let player_tier = tier();
+    for (index, tab) in TABS.iter().enumerate() {
+        menu.allowed[index] = tab_allowed(tab.name, in_match, cheats, player_tier);
+    }
+    if !menu.allowed[menu.tab]
+        && let Some(first) = menu.allowed.iter().position(|allowed| *allowed)
     {
-        menu.tab = skins;
+        menu.tab = first;
         menu.focus = 0;
     }
     let show = |nodes: &mut Query<&mut Node>, entity: Option<Entity>, visible: bool| {
@@ -1224,7 +1295,7 @@ pub(crate) fn update(
     // Only the skins tab is offered when the rest is cheats.
     for (entity, target) in &menu.targets {
         if let Target::Tab(tab) = *target {
-            show(&mut nodes, Some(*entity), !menu.skins_only || TABS[tab].name == "SKINS");
+            show(&mut nodes, Some(*entity), menu.allowed[tab]);
         }
     }
     if menu

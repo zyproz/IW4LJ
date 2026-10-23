@@ -38,6 +38,11 @@ use bevy::prelude::*;
 use bevy::ui::{Display, GlobalZIndex};
 use bevy::window::PrimaryWindow;
 
+/// The game finished loading and runs steadily (for the launch screen).
+pub fn game_ready() -> bool {
+    frame_cap::is_ready()
+}
+
 pub use bridge::{
     BridgeEvent, press_back, push, set_view, take_prompt, take_rumble, typed_char, typed_done,
 };

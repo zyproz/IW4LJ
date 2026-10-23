@@ -12,6 +12,12 @@ import android.content.Context;
 import android.hardware.input.InputManager;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.TextView;
 import android.util.Log;
 import android.util.SparseArray;
 import android.view.InputDevice;
@@ -77,6 +83,9 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             setTurnScreenOn(true);
         }
         getSystemService(InputManager.class).registerInputDeviceListener(this, null);
+        // A NativeActivity's window is taken by the game: the launch screen is
+        // a window of its own.
+        handler.post(this::showLaunchScreen);
         // Wi-Fi drops broadcast packets for an app that has not asked for
         // them, and a LAN host is found by its broadcast.
         try {
@@ -96,10 +105,122 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
                 nativeView(right - left, bottom - top, lines));
     }
 
+
+    // ---- Launch screen: a logo and a bar until the game has loaded. ----
+    private FrameLayout launchScreen;
+    private android.app.Dialog launchDialog;
+    private View launchFill;
+    private TextView launchText;
+    private float launchProgress = 0f;
+    private long launchStart;
+
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private void showLaunchScreen() {
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xFF000000);
+        root.setClickable(true);
+        ImageView logo = new ImageView(this);
+        int logoId = getResources().getIdentifier("ic_launcher_foreground", "drawable", getPackageName());
+        if (logoId != 0) {
+            logo.setImageResource(logoId);
+        }
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        FrameLayout.LayoutParams logoParams = new FrameLayout.LayoutParams(dp(300), dp(300), Gravity.CENTER);
+        logoParams.bottomMargin = dp(30);
+        root.addView(logo, logoParams);
+        FrameLayout track = new FrameLayout(this);
+        track.setBackgroundColor(0xFF1A1A1A);
+        FrameLayout.LayoutParams trackParams = new FrameLayout.LayoutParams(
+            dp(280), dp(6), Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+        trackParams.bottomMargin = dp(64);
+        launchFill = new View(this);
+        launchFill.setBackgroundColor(0xFF39FF14);
+        track.addView(launchFill, new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(track, trackParams);
+        launchText = new TextView(this);
+        launchText.setTextColor(0xFF9AE59A);
+        launchText.setTextSize(13f);
+        launchText.setText("Loading...");
+        FrameLayout.LayoutParams textParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+        textParams.bottomMargin = dp(30);
+        root.addView(launchText, textParams);
+        android.app.Dialog dialog = new android.app.Dialog(
+            this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        dialog.setCancelable(false);
+        dialog.setContentView(root, new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        dialog.setOnDismissListener(d -> hideSystemBars());
+        try {
+            dialog.show();
+        } catch (RuntimeException error) {
+            Log.w("IW4LJ", "no launch screen: " + error);
+            return;
+        }
+        launchDialog = dialog;
+        launchScreen = root;
+        launchStart = SystemClock.uptimeMillis();
+        handler.postDelayed(launchTick, 100);
+    }
+
+    private void dismissLaunchScreen() {
+        if (launchDialog != null) {
+            try {
+                launchDialog.dismiss();
+            } catch (RuntimeException error) {
+                Log.w("IW4LJ", "launch screen: " + error);
+            }
+            launchDialog = null;
+        }
+    }
+
+    private void updateLaunchBar() {
+        if (launchFill == null) {
+            return;
+        }
+        ViewGroup.LayoutParams params = launchFill.getLayoutParams();
+        params.width = (int) (dp(280) * launchProgress);
+        launchFill.setLayoutParams(params);
+        launchText.setText("Loading... " + (int) (launchProgress * 100) + " %");
+    }
+
+    // The bar is an estimate: it fills quickly and slows down, then completes
+    // when the game reports that it is running steadily.
+    private final Runnable launchTick = new Runnable() {
+        @Override
+        public void run() {
+            if (launchScreen == null) {
+                return;
+            }
+            long elapsed = SystemClock.uptimeMillis() - launchStart;
+            if (nativeIsReady() || elapsed > 45000) {
+                launchProgress = 1f;
+                updateLaunchBar();
+                handler.postDelayed(() -> {
+                    dismissLaunchScreen();
+                    launchScreen = null;
+                    launchFill = null;
+                    launchText = null;
+                }, 300);
+                return;
+            }
+            launchProgress += (0.92f - launchProgress) * 0.03f;
+            updateLaunchBar();
+            handler.postDelayed(this, 100);
+        }
+    };
+
+    private static native boolean nativeIsReady();
+
     private WifiManager.MulticastLock broadcastLock;
 
     @Override
     protected void onDestroy() {
+        dismissLaunchScreen();
         if (broadcastLock != null && broadcastLock.isHeld()) {
             broadcastLock.release();
         }

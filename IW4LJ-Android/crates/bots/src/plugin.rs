@@ -222,6 +222,9 @@ fn drain_bot_add_queue(
                     origin,
                     angles,
                     waited: 0,
+                    placed_at: None,
+                    last_move: 0,
+                    last_damage: 0,
                 }));
         }
         diag::info!(
@@ -375,39 +378,70 @@ fn place_bots(
         return;
     };
     let snapshot = world.0.snapshot(Tick(0));
+    // A pinned bot is held where it was put for about thirty seconds.
+    const PIN_POLLS: u32 = 300;
     placements.0.retain_mut(|placement| {
         placement.waited += 1;
         let alive = snapshot
             .meta
             .for_client(placement.id)
             .is_some_and(|meta| meta.lifecycle == ClientLifecycle::Alive);
+        let pinned_out = placement
+            .placed_at
+            .is_some_and(|at| placement.waited.saturating_sub(at) > PIN_POLLS);
+        if pinned_out {
+            return false;
+        }
         if !alive {
-            // Give up after about a minute: the bot was never going to spawn.
-            return placement.waited < 600;
+            // Give up after about a minute if the bot was never going to spawn.
+            return placement.placed_at.is_some() || placement.waited < 600;
         }
-        let request_id = request_ids.allocate();
-        if let Err(error) = actions.push(
-            placement.id,
-            ClientAction::Move {
-                request_id,
-                origin: placement.origin,
-                angles: placement.angles,
-            },
-        ) {
-            diag::warn!(Sim, "bots: placement of {} not queued — {error}", placement.id.0);
+        let Some(ps) = snapshot
+            .players
+            .iter()
+            .find(|(id, _)| *id == placement.id)
+            .map(|(_, ps)| ps)
+        else {
+            return true;
+        };
+        let dx = ps.origin[0] - placement.origin[0];
+        let dy = ps.origin[1] - placement.origin[1];
+        let dz = ps.origin[2] - placement.origin[2];
+        let away = dx * dx + dy * dy + dz * dz > 12.0 * 12.0;
+        // Once a second at most, and only when the bot is not where it belongs
+        // (a new round puts it back on its own spawn).
+        if away && placement.waited.saturating_sub(placement.last_move) >= 10 {
+            placement.last_move = placement.waited;
+            let request_id = request_ids.allocate();
+            if let Err(error) = actions.push(
+                placement.id,
+                ClientAction::Move {
+                    request_id,
+                    origin: placement.origin,
+                    angles: placement.angles,
+                },
+            ) {
+                diag::warn!(Sim, "bots: placement of {} not queued — {error}", placement.id.0);
+            } else if placement.placed_at.is_none() {
+                placement.placed_at = Some(placement.waited);
+            }
         }
-        // A trickshot target dies to any hit: one hit point left.
-        let request_id = request_ids.allocate();
-        if let Err(error) = actions.push(
-            placement.id,
-            ClientAction::DebugDamage {
-                request_id,
-                amount: 99,
-            },
-        ) {
-            diag::warn!(Sim, "bots: {} left at full health — {error}", placement.id.0);
+        // A trickshot target dies to any hit: one hit point left, again after
+        // every new life.
+        if ps.health > 1 && placement.waited.saturating_sub(placement.last_damage) >= 10 {
+            placement.last_damage = placement.waited;
+            let request_id = request_ids.allocate();
+            if let Err(error) = actions.push(
+                placement.id,
+                ClientAction::DebugDamage {
+                    request_id,
+                    amount: ps.health - 1,
+                },
+            ) {
+                diag::warn!(Sim, "bots: {} left at full health — {error}", placement.id.0);
+            }
         }
-        false
+        true
     });
 }
 

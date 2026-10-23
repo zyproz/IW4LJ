@@ -141,6 +141,14 @@ pub struct BotPlacement {
     pub origin: [f32; 3],
     pub angles: [f32; 3],
     pub waited: u32,
+    /// `waited` at the first time the bot was stood in place. The bot is then
+    /// kept pinned for a while: a new round spawns it at its own spawn again.
+    pub placed_at: Option<u32>,
+    /// `waited` at the last move that was sent, so a refused move is not
+    /// repeated every poll.
+    pub last_move: u32,
+    /// Same for the damage that leaves the bot on one hit point.
+    pub last_damage: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
