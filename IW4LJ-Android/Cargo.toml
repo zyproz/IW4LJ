@@ -4,7 +4,8 @@
 [patch.crates-io]
 # A Vulkan pipeline cache kept on disk (vendor/bevy_render/src/render_resource/
 # disk_pipeline_cache.rs): a phone GPU spends minutes compiling a map's pipelines.
-bevy_render = { path = "vendor/bevy_render" }
+# Désactivé : vendor/bevy_render n'est pas dans le dépôt (le build échouait).
+# bevy_render = { path = "vendor/bevy_render" }
 # The Java thread no longer waits indefinitely for the game thread (launch
 # "not responding" fix): vendor/android-activity/src/native_activity/glue.rs.
 android-activity = { path = "vendor/android-activity" }
