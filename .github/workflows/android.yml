@@ -107,12 +107,12 @@ jobs:
           fi
           "$BT/apksigner" sign --ks ks/iw4l.keystore --ks-pass pass:iw4l-ci-pass \
             --ks-key-alias iw4l --key-pass pass:iw4l-ci-pass \
-            --out "$B/IW4LJ-fresh.apk" "$B/aligned.apk"
-          "$BT/apksigner" verify --verbose "$B/IW4LJ-fresh.apk"
-          ls -l "$B/IW4LJ-fresh.apk"
+            --out "$B/MW2-Mobile.apk" "$B/aligned.apk"
+          "$BT/apksigner" verify --verbose "$B/MW2-Mobile.apk"
+          ls -l "$B/MW2-Mobile.apk"
 
       - uses: actions/upload-artifact@v4
         with:
           name: IW4LJ-fresh-build
-          path: build/IW4LJ-fresh.apk
+          path: build/MW2-Mobile.apk
           if-no-files-found: error

@@ -76,6 +76,10 @@ public class LaunchActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (getIntent() != null && getIntent().getBooleanExtra("iw4l_dev", false)) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        }
         removeTestLeftovers();
         boolean crashed = readFile(new File(getFilesDir(), STATE_FILE)).equals("starting");
         if (!crashed) {
@@ -88,13 +92,18 @@ public class LaunchActivity extends Activity {
     private void startGame() {
         writeState(this, "starting");
         new File(getFilesDir(), CRASH_FILE).delete();
-        startActivity(new Intent(this, GameActivity.class));
+        Intent game = new Intent(this, GameActivity.class);
+        // A development launch (`--ez iw4l_dev true`) carries on to the game.
+        if (getIntent() != null && getIntent().getExtras() != null) {
+            game.putExtras(getIntent().getExtras());
+        }
+        startActivity(game);
         finish();
     }
 
     private String buildReport() {
         StringBuilder out = new StringBuilder();
-        out.append("IW4LJ did not start last time.\n\n");
+        out.append("MW2 MOBILE did not start last time.\n\n");
         out.append("== Game files ==\n").append(gameFiles()).append("\n");
         String panic = readFile(new File(getFilesDir(), CRASH_FILE));
         out.append("== Error saved by the app ==\n")
@@ -200,7 +209,7 @@ public class LaunchActivity extends Activity {
         buttons.setGravity(Gravity.CENTER);
         buttons.addView(button("Copy", v -> {
             ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
-                .setPrimaryClip(ClipData.newPlainText("IW4LJ report", report));
+                .setPrimaryClip(ClipData.newPlainText("MW2 MOBILE report", report));
             Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show();
         }));
         buttons.addView(button("Share", v -> {
