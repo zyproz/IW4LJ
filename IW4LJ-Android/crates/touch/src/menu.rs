@@ -91,9 +91,6 @@ enum Act {
     Skin(i32),
     /// Start the match again the way the last one was set up: its map and bots.
     QuickStart,
-    /// One tap: a Search and Destroy trickshot match on the last map, with one
-    /// frozen bot standing in front of the player.
-    TrickshotGame,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -113,9 +110,6 @@ const LAN_JOIN_LINES: &str = "openmenu find_lobbies; ui_browser_refresh";
 /// Seconds the relay is given to start, and the browser to reach a found host
 /// (it retries about every five seconds).
 const LAN_HOST_DELAY: f32 = 1.0;
-/// Seconds after TRICKSHOT GAME before the frozen bot is added: the player has
-/// to be alive for `stillbot` to know where to stand it.
-const TRICKSHOT_BOT_DELAY: f32 = 10.0;
 const LAN_JOIN_DELAY: f32 = 7.0;
 
 /// What the player may use of the mod menu. Placeholder until signed licence
@@ -163,6 +157,17 @@ fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
             }
         }
     }
+}
+
+/// Trickshot tools that only a VIP or an admin can press. A free player still
+/// sees them, they just do nothing.
+fn locked(tab: usize, item: usize) -> bool {
+    tier() == Tier::Free
+        && TABS[tab].name == "TRICKSHOT"
+        && matches!(
+            TABS[tab].items[item].label,
+            "SAVE POSITION" | "LOAD POSITION" | "SPAWN AT SAVED" | "NOCLIP" | "PAD SAVE/LOAD" | "BOT HERE"
+        )
 }
 
 struct Item {
@@ -230,12 +235,8 @@ const TABS: [Tab; 8] = [
     },
     Tab {
         name: "TRICKSHOT",
-        hint: "TRICKSHOT GAME starts a Search and Destroy match with one frozen bot, in one tap. Kill the bot and the match ends with the final killcam. BOT HERE moves that bot to you. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
+        hint: "Create the game with TRICKSHOT GAME in the main menu. SAVE POSITION, LOAD POSITION, NOCLIP, PAD SAVE/LOAD and BOT HERE are for VIP. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
         items: &[
-            Item {
-                label: "TRICKSHOT GAME",
-                act: Act::TrickshotGame,
-            },
             line("SAVE POSITION", "save"),
             line("LOAD POSITION", "load"),
             toggle("SPAWN AT SAVED", 0, "loadspawn on", "loadspawn off"),
@@ -579,14 +580,6 @@ fn quick_start_script() -> String {
     script
 }
 
-/// The trickshot setup, then the last map: `trickshot` while no match is live
-/// only records that the next map loads as Search and Destroy, no round timer,
-/// first round won takes the match.
-fn trickshot_game_script() -> String {
-    let (map, _) = read_quick();
-    format!("trickshot; map {map}; wait world; spawn 0; force_match_start")
-}
-
 fn setting_path(setting: Setting) -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(setting.file()))
 }
@@ -639,7 +632,6 @@ fn small_print(act: Act) -> &'static str {
         Act::Lan(Lan::HostOnline) => "may need port forwarding (UDP 28960)",
         Act::Prompt(kind) if kind == crate::bridge::PROMPT_HOST_IP => "friend's IP, or IP:port",
         Act::QuickStart => "last map and bots",
-        Act::TrickshotGame => "S&D, 1 bot, last map",
         _ => "",
     }
 }
@@ -978,18 +970,13 @@ fn run(menu: &mut ModMenu, target: Target, queue: &mut ConsoleQueue, now: f32) {
             menu.tab = tab;
             menu.focus = 0;
         }
+        Target::Item(tab, item) if locked(tab, item) => {}
         Target::Item(tab, item) => match TABS[tab].items[item].act {
             Act::Line(line) => {
                 remember_setup(line);
                 queue.push_line(line);
             }
             Act::QuickStart => queue.push_line(&quick_start_script()),
-            Act::TrickshotGame => {
-                queue.push_line(&trickshot_game_script());
-                // The bot comes once the player is in the match; the menu
-                // closes with it, as for the LAN steps.
-                menu.lan_next = Some((now + TRICKSHOT_BOT_DELAY, "stillbot; bothp 1"));
-            }
             Act::Toggle { slot, on, off } => {
                 menu.toggles[slot] = !menu.toggles[slot];
                 if slot == TP_SLOT {
@@ -1336,7 +1323,7 @@ pub(crate) fn update(
             Target::Tab(tab) => tab == menu.tab,
             Target::Close => false,
             Target::Item(tab, item) => match TABS[tab].items[item].act {
-                Act::Line(_) | Act::Prompt(_) | Act::QuickStart | Act::TrickshotGame => false,
+                Act::Line(_) | Act::Prompt(_) | Act::QuickStart => false,
                 Act::Lan(Lan::Host | Lan::HostOnline) => lan_status == lan::Status::Hosting,
                 Act::Lan(Lan::Join) => {
                     matches!(lan_status, lan::Status::Searching | lan::Status::Joined(_))

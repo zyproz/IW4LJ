@@ -595,7 +595,71 @@ pub fn load_ui_menu_catalog(games: &GamesRoot) -> (MenuCatalog, Vec<String>) {
         catalog.menus.len(),
         catalog.zone_image_n()
     ));
+    report.extend(rebrand_for_trickshot(&mut catalog));
     (catalog, report)
+}
+
+/// The trickshot edition of the game's own menus: the button that creates a game
+/// is renamed TRICKSHOT GAME and runs `trickshot` first, so the game is made as
+/// Search and Destroy with the trickshot rules and the player only picks the map
+/// and the session settings. The button is found by its text; every candidate
+/// menu entry is also written to `menu_dump.txt` (next to `zone` and `main`) so
+/// a miss can be fixed from that list.
+fn rebrand_for_trickshot(catalog: &mut MenuCatalog) -> Vec<String> {
+    const TRICKSHOT_LINE: &str = "exec \"trickshot\"";
+    let mut report = Vec::new();
+    let mut dump = String::new();
+    for (menu_name, menu) in catalog.menus.iter_mut() {
+        for item in menu.items.iter_mut() {
+            let key = item
+                .text_key
+                .replace('_', " ")
+                .trim_start_matches('@')
+                .trim()
+                .to_ascii_uppercase();
+            let create = key.contains("CREATE")
+                && ["GAME", "LOBBY", "PARTY", "MATCH"]
+                    .iter()
+                    .any(|word| key.contains(word))
+                && !key.contains("CLASS");
+            let interesting = ["CREATE", "LOBBY", "JOIN", "FIND", "PARTY", "PRIVATE", "QUICK"]
+                .iter()
+                .any(|word| key.contains(word));
+            if interesting {
+                dump.push_str(&format!(
+                    "{menu_name} | {} | {} | literal={} | action={:?}\n",
+                    item.name, item.text_key, item.text_literal, item.action
+                ));
+            }
+            if !create {
+                continue;
+            }
+            item.text_key = "TRICKSHOT GAME".to_owned();
+            item.text_literal = true;
+            item.action.insert(0, TRICKSHOT_LINE.to_owned());
+            item.handlers
+                .action
+                .insert(0, MenuEvent::Script(TRICKSHOT_LINE.to_owned()));
+            if !item.handlers.accept.is_empty() {
+                item.handlers
+                    .accept
+                    .insert(0, MenuEvent::Script(TRICKSHOT_LINE.to_owned()));
+            }
+            report.push(format!(
+                "menu catalog: {menu_name}/{} renamed TRICKSHOT GAME",
+                item.name
+            ));
+            dump.push_str(&format!("RENAMED {menu_name} | {}\n", item.name));
+        }
+    }
+    let folder = Path::new("/sdcard/Android/media/dev.iw4j.iw4l/mw2");
+    if folder.is_dir() {
+        let _ = std::fs::write(folder.join("menu_dump.txt"), dump);
+    }
+    if report.is_empty() {
+        report.push("menu catalog: no create-game button found to rename".to_owned());
+    }
+    report
 }
 
 pub fn load_menu_catalog(path: &Path) -> Result<MenuCatalog, String> {
