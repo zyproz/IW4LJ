@@ -115,7 +115,9 @@ impl BotAddQueue {
         self.0.push(BotAddRequest {
             count: 1,
             dummy: true,
-            side: None,
+            // The target is always on the other team: a kill on a teammate
+            // scores nothing and would never end the match.
+            side: Some(BotSide::Enemy),
             at: Some((origin, angles)),
         });
     }

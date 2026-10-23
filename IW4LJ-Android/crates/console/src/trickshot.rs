@@ -77,7 +77,10 @@ pub(crate) fn route_trickshot_commands(
     mut bot_add: ResMut<bots::BotAddQueue>,
     mut looping: ResMut<frame::TrickshotLoop>,
     mut lives: MessageReader<frame::LifeStarted>,
-    roster: Option<Res<bots::BotRoster>>,
+    (roster, mut bot_tp): (
+        Option<Res<bots::BotRoster>>,
+        Option<ResMut<bots::BotTpQueue>>,
+    ),
     mut inbox: Option<ResMut<net::ClientActionInbox>>,
     mut request_ids: ResMut<net::ActionRequestIds>,
 ) {
@@ -109,8 +112,26 @@ pub(crate) fn route_trickshot_commands(
                 ];
                 let angles = [0.0, (ps.viewangles[1] + 180.0) % 360.0, 0.0];
                 looping.bot = Some((origin, angles));
-                bot_add.push_dummy_at(origin, angles);
-                echo("stillbot: a frozen bot is joining at your position".into());
+                // One frozen bot only: when one is already in the match, stand
+                // that one here instead of adding another.
+                let existing = roster
+                    .as_deref()
+                    .and_then(|roster| roster.bots.iter().find(|bot| bot.brain.is_none()))
+                    .map(|bot| bot.id);
+                if let (Some(id), Some(tp)) = (existing, bot_tp.as_deref_mut()) {
+                    tp.push(bots::BotTpRequest {
+                        target: bots::BotTpTarget::Id(id),
+                        where_: bots::BotTpWhere::Absolute {
+                            origin,
+                            yaw: Some(angles[1]),
+                            pitch: Some(0.0),
+                        },
+                    });
+                    echo("stillbot: the frozen bot moves to your position".into());
+                } else {
+                    bot_add.push_dummy_at(origin, angles);
+                    echo("stillbot: a frozen bot is joining at your position".into());
+                }
             }
             "bothp" => {
                 if authority.as_deref().is_some_and(|a| !a.0.cheats_enabled()) {

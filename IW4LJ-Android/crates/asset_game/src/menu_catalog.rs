@@ -1037,6 +1037,23 @@ impl MenuSink {
         if self.catalog.zone_images.contains_key(&key) {
             return;
         }
+        // MW2 MOBILE: the main menu pictures are replaced by our own artwork.
+        if matches!(
+            key.as_str(),
+            "mw2_main_background" | "mw2_main_mp_image" | "mw2_main_co_image" | "mw2_main_sp_image"
+        ) {
+            let rec = ZoneUiImage {
+                material: bare.to_owned(),
+                image: format!("mw2mobile_{key}"),
+                width: 1280,
+                height: 720,
+                rgba: Arc::new(MW2_MOBILE_MENU_BG.to_vec()),
+                source: "custom",
+            };
+            diag::info!(Zone, "menu catalog: UI image {bare} -> MW2 MOBILE artwork");
+            self.catalog.zone_images.insert(key, rec);
+            return;
+        }
         let Some(&index) = self.material_ts2d.get(&key) else {
             diag::info!(
                 Zone,
@@ -1116,6 +1133,8 @@ impl MenuSink {
         }
     }
 }
+
+static MW2_MOBILE_MENU_BG: &[u8] = include_bytes!("mw2_menu_bg_1280x720.rgba");
 
 impl AssetSink for MenuSink {
     fn set_script_strings(&mut self, _strings: ScriptStrings) {}
