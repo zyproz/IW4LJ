@@ -383,6 +383,9 @@ impl MenuCatalog {
         let definitions = crate::menu_source::load(source, self)?;
         self.menus
             .extend(definitions.into_iter().map(|def| (def.name.clone(), def)));
+        // The project's own main menu (CREATE GAME, FIND LOBBIES, ...) comes in
+        // through here, not through the game's zones.
+        let _ = rebrand_for_trickshot(self);
         Ok(())
     }
 
@@ -606,7 +609,8 @@ pub fn load_ui_menu_catalog(games: &GamesRoot) -> (MenuCatalog, Vec<String>) {
 /// menu entry is also written to `menu_dump.txt` (next to `zone` and `main`) so
 /// a miss can be fixed from that list.
 fn rebrand_for_trickshot(catalog: &mut MenuCatalog) -> Vec<String> {
-    const TRICKSHOT_LINE: &str = "exec \"trickshot\"";
+    // Same shape as the scripts the game's own menus carry.
+    const TRICKSHOT_LINE: &str = "\"exec\" \"set ui_gametype sd\" ; \"exec\" \"trickshot\" ; ";
     let mut report = Vec::new();
     let mut dump = String::new();
     for (menu_name, menu) in catalog.menus.iter_mut() {
@@ -652,12 +656,18 @@ fn rebrand_for_trickshot(catalog: &mut MenuCatalog) -> Vec<String> {
             dump.push_str(&format!("RENAMED {menu_name} | {}\n", item.name));
         }
     }
+    // The first write of a run replaces the file, later ones add to it: the
+    // zones and the project's own menus are loaded one after the other.
+    static DUMPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let folder = Path::new("/sdcard/Android/media/dev.iw4j.iw4l/mw2");
-    if folder.is_dir() {
-        let _ = std::fs::write(folder.join("menu_dump.txt"), dump);
-    }
-    if report.is_empty() {
-        report.push("menu catalog: no create-game button found to rename".to_owned());
+    if folder.is_dir() && !dump.is_empty() {
+        let path = folder.join("menu_dump.txt");
+        if !DUMPED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            let _ = std::fs::write(path, dump);
+        } else if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(path) {
+            use std::io::Write;
+            let _ = file.write_all(dump.as_bytes());
+        }
     }
     report
 }

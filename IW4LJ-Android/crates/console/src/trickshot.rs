@@ -101,6 +101,14 @@ pub(crate) fn route_trickshot_commands(
     let live = *has_world.get() == frame::MatchScope::Live;
     for cmd in events.read() {
         match cmd.name.as_str() {
+            // The main menu's CREATE GAME: the lobby opens as Search and
+            // Destroy with the trickshot rules; the host still picks the map
+            // and the settings.
+            "ui_create_lobby" => {
+                if !live {
+                    queue.push_line("set ui_gametype sd; trickshot");
+                }
+            }
             "stillbot" => {
                 if authority.as_deref().is_some_and(|a| !a.0.cheats_enabled()) {
                     echo("stillbot: cheats are off".into());
