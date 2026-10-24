@@ -44,6 +44,10 @@ pub(crate) fn register_trickshot_commands(registry: &mut ConsoleRegistry) {
             "stillbot — add a bot that never moves or shoots, standing where you are now (needs cheats)",
         ),
         (
+            "bothere",
+            "bothere — bring the bot to where you stand and let it keep walking; with no bot, one joins here (needs cheats)",
+        ),
+        (
             "botmove",
             "botmove — the bot walks the map and does not shoot back; with no bot, one walking bot joins beside you (needs cheats)",
         ),
@@ -101,21 +105,24 @@ pub(crate) fn route_trickshot_commands(
     let live = *has_world.get() == frame::MatchScope::Live;
     for cmd in events.read() {
         match cmd.name.as_str() {
-            // The main menu's CREATE GAME: the lobby opens as Search and
-            // Destroy with the trickshot rules; the host still picks the map
-            // and the settings.
+            // The main menu's CREATE GAME: the lobby opens with Search and
+            // Destroy picked, through the same command the mode list uses; the
+            // host still picks the map and the settings.
             "ui_create_lobby" => {
                 if !live {
-                    queue.push_line("set ui_gametype sd; trickshot");
+                    queue.push_line("ui_select_mode sd");
                 }
             }
-            "stillbot" => {
+            // `stillbot` stands a bot still; `bothere` brings the bot to you and
+            // lets it keep walking.
+            "stillbot" | "bothere" => {
+                let keep_moving = cmd.name == "bothere";
                 if authority.as_deref().is_some_and(|a| !a.0.cheats_enabled()) {
-                    echo("stillbot: cheats are off".into());
+                    echo(format!("{}: cheats are off", cmd.name));
                     continue;
                 }
                 let Some(ps) = presented.alive_player(local.0) else {
-                    echo("stillbot: not alive — spawn a class first".into());
+                    echo(format!("{}: not alive — spawn a class first", cmd.name));
                     continue;
                 };
                 // Beside the player, not on them: two bodies in one place trap
@@ -136,7 +143,7 @@ pub(crate) fn route_trickshot_commands(
                         roster
                             .bots
                             .iter()
-                            .find(|bot| bot.brain.is_none() || bots::BotRoster::passive())
+                            .find(|bot| keep_moving || bot.brain.is_none() || bots::BotRoster::passive())
                     })
                     .map(|bot| bot.id);
                 if let (Some(id), Some(tp)) = (existing, bot_tp.as_deref_mut()) {
@@ -148,12 +155,20 @@ pub(crate) fn route_trickshot_commands(
                             pitch: Some(0.0),
                         },
                     });
-                    // The bot that was walking stops where you put it.
-                    bots::BotRoster::set_passive(false);
-                    if let Some(roster) = roster.as_deref_mut() {
-                        roster.set_all_moving(false);
+                    if keep_moving {
+                        echo("bothere: the bot moves to your position".into());
+                    } else {
+                        // The bot that was walking stops where you put it.
+                        bots::BotRoster::set_passive(false);
+                        if let Some(roster) = roster.as_deref_mut() {
+                            roster.set_all_moving(false);
+                        }
+                        echo("stillbot: the frozen bot moves to your position".into());
                     }
-                    echo("stillbot: the frozen bot moves to your position".into());
+                } else if keep_moving {
+                    bots::BotRoster::set_passive(true);
+                    bot_add.push_mover_at(origin, angles);
+                    echo("bothere: a bot is joining at your position".into());
                 } else {
                     bot_add.push_dummy_at(origin, angles);
                     echo("stillbot: a frozen bot is joining at your position".into());
@@ -370,16 +385,6 @@ pub(crate) fn route_trickshot_commands(
         }
         looping.rearm = false;
         echo("trickshot: round restarted — the bot is back where it stood".into());
-    }
-    // A trickshot game (TRICKSHOT GAME in the main menu) opens with one bot
-    // that walks the map, so a player without the bot tools still has a target.
-    if respawned
-        && setup.gametype.as_deref() == Some("sd")
-        && !setup.rules.is_empty()
-        && roster.as_deref().is_some_and(|roster| roster.bots.is_empty())
-        && authority.as_deref().is_some_and(|a| a.0.cheats_enabled())
-    {
-        queue.push_line("wait 3s; botmove");
     }
 }
 

@@ -137,7 +137,7 @@ fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
             } else {
                 // The account tab is where a free player finds their ID and
                 // enters a key.
-                name == "TRICKSHOT" || name == "GRAPHICS" || name == "ACCOUNT"
+                name == "TRICKSHOT" || name == "LAN" || name == "GRAPHICS" || name == "ACCOUNT"
             }
         }
     }
@@ -152,7 +152,7 @@ fn locked(tab: usize, item: usize) -> bool {
     }
     let label = TABS[tab].items[item].label;
     match TABS[tab].name {
-        "TRICKSHOT" => !matches!(label, "SAVE POSITION" | "LOAD POSITION"),
+        "TRICKSHOT" => !matches!(label, "SAVE POSITION" | "LOAD POSITION" | "BOT HERE"),
         // A free player may rename themselves and enter a key; the unlocks
         // and prestiges are for a VIP.
         "ACCOUNT" => !matches!(label, "CHANGE NAME" | "ENTER LICENSE KEY"),
@@ -196,10 +196,10 @@ struct Tab {
     items: &'static [Item],
 }
 
-const TABS: [Tab; 4] = [
+const TABS: [Tab; 5] = [
     Tab {
         name: "TRICKSHOT",
-        hint: "Create the game with TRICKSHOT GAME in the main menu: a bot walks the map. Everyone can SAVE POSITION and LOAD POSITION. The rest is for VIP: NOCLIP, MOVE BOT, FREEZE BOT, BOT HERE and the other tools. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
+        hint: "Create the game with TRICKSHOT GAME in the main menu (check GAME SETUP says Search and Destroy). Once in, BOT HERE puts a bot where you stand. Everyone can SAVE POSITION, LOAD POSITION and BOT HERE. The rest is for VIP: NOCLIP, MOVE BOT, FREEZE BOT and the other tools. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
         items: &[
             line("SAVE POSITION", "save"),
             line("LOAD POSITION", "load"),
@@ -208,7 +208,7 @@ const TABS: [Tab; 4] = [
             toggle("GOD MODE", 2, "god", "god"),
             toggle("PAD SAVE/LOAD", 5, "", ""),
             toggle("EXPLOSIVE BULLETS", 6, "explosivebullets on", "explosivebullets off"),
-            line("BOT HERE", "stillbot"),
+            line("BOT HERE", "bothere"),
             line("MOVE BOT", "botmove"),
             line("FREEZE BOT", "botfreeze"),
             line("NEXT KILL WINS", "lastkill"),
@@ -216,6 +216,32 @@ const TABS: [Tab; 4] = [
             line("BOTS TO 1 HP", "bothp 1"),
             line("REFILL AMMO", "give ammo"),
             line("RESPAWN", "kill"),
+        ],
+    },
+    Tab {
+        name: "LAN",
+        hint: "Play with friends over the internet, free: everyone installs the Tailscale app and joins the same network. The host taps HOST ONLINE (BY IP) and tells friends the address Tailscale shows for the host phone (it starts with 100). Friends tap JOIN BY IP and type it. On the same Wi-Fi, use HOST LAN GAME and JOIN LAN GAME. STOP LAN ends it.",
+        items: &[
+            Item {
+                label: "HOST LAN GAME",
+                act: Act::Lan(Lan::Host),
+            },
+            Item {
+                label: "HOST ONLINE (BY IP)",
+                act: Act::Lan(Lan::HostOnline),
+            },
+            Item {
+                label: "JOIN LAN GAME",
+                act: Act::Lan(Lan::Join),
+            },
+            Item {
+                label: "JOIN BY IP",
+                act: Act::Prompt(crate::bridge::PROMPT_HOST_IP),
+            },
+            Item {
+                label: "STOP LAN",
+                act: Act::Lan(Lan::Stop),
+            },
         ],
     },
     Tab {

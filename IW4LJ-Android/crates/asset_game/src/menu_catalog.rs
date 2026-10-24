@@ -610,7 +610,7 @@ pub fn load_ui_menu_catalog(games: &GamesRoot) -> (MenuCatalog, Vec<String>) {
 /// a miss can be fixed from that list.
 fn rebrand_for_trickshot(catalog: &mut MenuCatalog) -> Vec<String> {
     // Same shape as the scripts the game's own menus carry.
-    const TRICKSHOT_LINE: &str = "\"exec\" \"set ui_gametype sd\" ; \"exec\" \"trickshot\" ; ";
+    const TRICKSHOT_LINE: &str = "\"exec\" \"ui_select_mode sd\" ; ";
     let mut report = Vec::new();
     let mut dump = String::new();
     for (menu_name, menu) in catalog.menus.iter_mut() {
