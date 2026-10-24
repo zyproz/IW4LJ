@@ -140,12 +140,13 @@ fn tier() -> Tier {
     })
 }
 
-/// A match someone else hosts (or without cheats) offers only the skin picker.
-/// Otherwise a free player has the trickshot tab in a match, and the trickshot
-/// and graphics tabs on the main menu; a VIP or admin has every tab.
+/// A match someone else hosts (or without cheats) offers only the skin picker,
+/// and only to a VIP or admin. Otherwise a free player has the trickshot tab in
+/// a match, and the trickshot and graphics tabs on the main menu; a VIP or
+/// admin also has the skins and account tabs.
 fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
     if in_match && !cheats {
-        return name == "SKINS";
+        return name == "SKINS" && tier != Tier::Free;
     }
     match tier {
         Tier::Admin | Tier::Vip => true,
@@ -159,15 +160,13 @@ fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
     }
 }
 
-/// Trickshot tools that only a VIP or an admin can press. A free player still
+/// A free player has two trickshot tools: SAVE POSITION and LOAD POSITION.
+/// Every other button of the tab is for a VIP or an admin; a free player still
 /// sees them, they just do nothing.
 fn locked(tab: usize, item: usize) -> bool {
     tier() == Tier::Free
         && TABS[tab].name == "TRICKSHOT"
-        && matches!(
-            TABS[tab].items[item].label,
-            "SAVE POSITION" | "LOAD POSITION" | "SPAWN AT SAVED" | "NOCLIP" | "PAD SAVE/LOAD" | "BOT HERE" | "FREEZE BOT"
-        )
+        && !matches!(TABS[tab].items[item].label, "SAVE POSITION" | "LOAD POSITION")
 }
 
 struct Item {
@@ -206,36 +205,10 @@ struct Tab {
     items: &'static [Item],
 }
 
-const TABS: [Tab; 8] = [
-    Tab {
-        name: "LAN",
-        hint: "From the main menu: one phone hosts, the others join - on the same Wi-Fi, or over the internet by IP. The host picks the map and starts.",
-        items: &[
-            Item {
-                label: "HOST LAN GAME",
-                act: Act::Lan(Lan::Host),
-            },
-            Item {
-                label: "HOST ONLINE (BY IP)",
-                act: Act::Lan(Lan::HostOnline),
-            },
-            Item {
-                label: "JOIN LAN GAME",
-                act: Act::Lan(Lan::Join),
-            },
-            Item {
-                label: "JOIN BY IP",
-                act: Act::Prompt(crate::bridge::PROMPT_HOST_IP),
-            },
-            Item {
-                label: "STOP LAN",
-                act: Act::Lan(Lan::Stop),
-            },
-        ],
-    },
+const TABS: [Tab; 4] = [
     Tab {
         name: "TRICKSHOT",
-        hint: "Create the game with TRICKSHOT GAME in the main menu. MOVE BOT makes the bot walk the map; SAVE POSITION, LOAD POSITION, NOCLIP, PAD SAVE/LOAD, BOT HERE and FREEZE BOT are for VIP. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
+        hint: "Create the game with TRICKSHOT GAME in the main menu: a bot walks the map. Everyone can SAVE POSITION and LOAD POSITION. The rest is for VIP: NOCLIP, MOVE BOT, FREEZE BOT, BOT HERE and the other tools. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
         items: &[
             line("SAVE POSITION", "save"),
             line("LOAD POSITION", "load"),
@@ -370,54 +343,6 @@ const TABS: [Tab; 8] = [
                 label: SKINS[26].name,
                 act: Act::Skin(26),
             },
-        ],
-    },
-    Tab {
-        name: "MATCH",
-        hint: "QUICK START plays your last map with the bots you last added, in one tap. Or start a private match from the main menu and control it from here.",
-        items: &[
-            Item {
-                label: "QUICK START",
-                act: Act::QuickStart,
-            },
-            line("START MATCH", "force_match_start"),
-            line("SPAWN", "spawn 0"),
-            line("RESTART MAP", "map_restart"),
-            line("LEAVE MATCH", "disconnect"),
-            toggle("THIRD PERSON", 3, "thirdperson", "thirdperson"),
-        ],
-    },
-    Tab {
-        name: "BOTS",
-        hint: "Bots join the match you are hosting. A still bot never moves or shoots.",
-        items: &[
-            line("ADD 1 BOT", "bot add 1"),
-            line("ADD 5 BOTS", "bot add 5"),
-            line("ADD STILL BOT", "bot dummy 1"),
-            toggle("FREEZE BOTS", 4, "bot hold on", "bot hold off"),
-            line("BOTS FIRE", "bot fire all"),
-        ],
-    },
-    Tab {
-        name: "MAPS",
-        hint: "Loads the map straight away as a private match.",
-        items: &[
-            line("AFGHAN", "map mp_afghan"),
-            line("DERAIL", "map mp_derail"),
-            line("ESTATE", "map mp_estate"),
-            line("FAVELA", "map mp_favela"),
-            line("HIGHRISE", "map mp_highrise"),
-            line("INVASION", "map mp_invasion"),
-            line("KARACHI", "map mp_checkpoint"),
-            line("QUARRY", "map mp_quarry"),
-            line("RUNDOWN", "map mp_rundown"),
-            line("RUST", "map mp_rust"),
-            line("SCRAPYARD", "map mp_boneyard"),
-            line("SKIDROW", "map mp_nightshift"),
-            line("SUB BASE", "map mp_subbase"),
-            line("TERMINAL", "map mp_terminal"),
-            line("UNDERPASS", "map mp_underpass"),
-            line("WASTELAND", "map mp_brecourt"),
         ],
     },
     Tab {

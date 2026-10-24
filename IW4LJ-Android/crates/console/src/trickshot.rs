@@ -371,6 +371,16 @@ pub(crate) fn route_trickshot_commands(
         looping.rearm = false;
         echo("trickshot: round restarted — the bot is back where it stood".into());
     }
+    // A trickshot game (TRICKSHOT GAME in the main menu) opens with one bot
+    // that walks the map, so a player without the bot tools still has a target.
+    if respawned
+        && setup.gametype.as_deref() == Some("sd")
+        && !setup.rules.is_empty()
+        && roster.as_deref().is_some_and(|roster| roster.bots.is_empty())
+        && authority.as_deref().is_some_and(|a| a.0.cheats_enabled())
+    {
+        queue.push_line("wait 3s; botmove");
+    }
 }
 
 /// A looped match starts again with the player out of the game. Spawn straight
