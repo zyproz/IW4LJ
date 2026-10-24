@@ -1,0 +1,58 @@
+# Compile le serveur maître IW4L (liste des parties + relais) pour Android arm64,
+# afin de le faire tourner dans Termux sur un téléphone qui reste allumé.
+# Lancer : gh workflow run master.yml -R zyproz/IW4LJ
+# Résultat : artifact "iw4l-master-android" (le binaire iw4l-master).
+
+name: Build serveur maître
+
+on:
+  workflow_dispatch:
+
+jobs:
+  master:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Libérer de la place disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "IW4LJ-Android -> target"
+          key: master
+
+      - name: Paquets système
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config
+
+      - name: SDK et NDK Android
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "ndk;28.2.13676358"
+
+      - name: Compiler iw4l-master
+        working-directory: IW4LJ-Android
+        run: |
+          NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$BIN/aarch64-linux-android31-clang"
+          export CXX_aarch64_linux_android="$BIN/aarch64-linux-android31-clang++"
+          export AR_aarch64_linux_android="$BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android31-clang"
+          export RUST_BACKTRACE=1
+          cargo build -p iw4l-master --release --target aarch64-linux-android
+          ls -l target/aarch64-linux-android/release/iw4l-master
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iw4l-master-android
+          path: IW4LJ-Android/target/aarch64-linux-android/release/iw4l-master
+          if-no-files-found: error
