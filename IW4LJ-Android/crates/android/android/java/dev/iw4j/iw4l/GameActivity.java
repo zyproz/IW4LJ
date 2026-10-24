@@ -279,6 +279,8 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
                 askText(kind, "Player name", 15, false);
             } else if (kind == 2) {
                 askText(kind, "Host IP address (shown on the host's LAN tab)", 15, true);
+            } else if (kind == 3) {
+                askText(kind, "License key (paste it here)", 400, false);
             }
             handler.postDelayed(this, 300);
         }

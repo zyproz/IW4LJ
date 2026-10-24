@@ -12,6 +12,7 @@ use bevy::prelude::*;
 use bevy::text::{FontSize, Justify, TextLayout};
 use bevy::ui::{ComputedNode, Display, GlobalZIndex, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
+use crate::license::{self, Tier};
 use crate::skins::SKINS;
 use console::{ConsoleLine, ConsoleQueue};
 
@@ -110,34 +111,14 @@ const LAN_JOIN_LINES: &str = "openmenu find_lobbies; ui_browser_refresh";
 /// Seconds the relay is given to start, and the browser to reach a found host
 /// (it retries about every five seconds).
 const LAN_HOST_DELAY: f32 = 1.0;
+/// Seconds after launch when this phone starts its own relay, once the main
+/// menu is up: CREATE GAME needs it, and the LAN tab that used to start it is gone.
+const AUTO_HOST_AFTER: f32 = 15.0;
 const LAN_JOIN_DELAY: f32 = 7.0;
 
-/// What the player may use of the mod menu. Placeholder until signed licence
-/// keys: an empty folder named `admin` or `vip` next to `zone` and `main`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Tier {
-    Free,
-    Vip,
-    Admin,
-}
-
+/// What the player may use of the mod menu: set by the signed licence key.
 fn tier() -> Tier {
-    static TIER: std::sync::OnceLock<Tier> = std::sync::OnceLock::new();
-    *TIER.get_or_init(|| {
-        for root in [
-            "/sdcard/Android/media/dev.iw4j.iw4l/mw2",
-            "/storage/emulated/0/Android/media/dev.iw4j.iw4l/mw2",
-        ] {
-            let root = std::path::Path::new(root);
-            if root.join("admin").is_dir() {
-                return Tier::Admin;
-            }
-            if root.join("vip").is_dir() {
-                return Tier::Vip;
-            }
-        }
-        Tier::Free
-    })
+    license::tier()
 }
 
 /// A match someone else hosts (or without cheats) offers only the skin picker,
@@ -154,7 +135,9 @@ fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
             if in_match {
                 name == "TRICKSHOT"
             } else {
-                name == "TRICKSHOT" || name == "GRAPHICS"
+                // The account tab is where a free player finds their ID and
+                // enters a key.
+                name == "TRICKSHOT" || name == "GRAPHICS" || name == "ACCOUNT"
             }
         }
     }
@@ -164,9 +147,17 @@ fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
 /// Every other button of the tab is for a VIP or an admin; a free player still
 /// sees them, they just do nothing.
 fn locked(tab: usize, item: usize) -> bool {
-    tier() == Tier::Free
-        && TABS[tab].name == "TRICKSHOT"
-        && !matches!(TABS[tab].items[item].label, "SAVE POSITION" | "LOAD POSITION")
+    if tier() != Tier::Free {
+        return false;
+    }
+    let label = TABS[tab].items[item].label;
+    match TABS[tab].name {
+        "TRICKSHOT" => !matches!(label, "SAVE POSITION" | "LOAD POSITION"),
+        // A free player may rename themselves and enter a key; the unlocks
+        // and prestiges are for a VIP.
+        "ACCOUNT" => !matches!(label, "CHANGE NAME" | "ENTER LICENSE KEY"),
+        _ => false,
+    }
 }
 
 struct Item {
@@ -352,6 +343,10 @@ const TABS: [Tab; 4] = [
             Item {
                 label: "CHANGE NAME",
                 act: Act::Prompt(crate::bridge::PROMPT_NAME),
+            },
+            Item {
+                label: "ENTER LICENSE KEY",
+                act: Act::Prompt(crate::bridge::PROMPT_LICENSE),
             },
             line("UNLOCK ALL", "unlock all"),
             line("RESET LEVEL", "unlock reset"),
@@ -558,6 +553,7 @@ fn small_print(act: Act) -> &'static str {
     match act {
         Act::Lan(Lan::HostOnline) => "may need port forwarding (UDP 28960)",
         Act::Prompt(kind) if kind == crate::bridge::PROMPT_HOST_IP => "friend's IP, or IP:port",
+        Act::Prompt(kind) if kind == crate::bridge::PROMPT_LICENSE => "paste the key from ZyProz",
         Act::QuickStart => "last map and bots",
         _ => "",
     }
@@ -1126,8 +1122,21 @@ pub(crate) fn drive_lan(
     mut menu: ResMut<ModMenu>,
     time: Res<Time>,
     mut queue: ResMut<ConsoleQueue>,
+    mut auto_hosted: Local<bool>,
 ) {
     let now = time.elapsed_secs();
+    // The game's own CREATE GAME connects to the relay on this phone, and the
+    // relay only runs once the phone hosts. Start it once, unless a LAN
+    // session is already under way.
+    if !*auto_hosted && now >= AUTO_HOST_AFTER {
+        *auto_hosted = true;
+        if !matches!(
+            lan::status(),
+            lan::Status::Hosting | lan::Status::Searching | lan::Status::Joined(_)
+        ) {
+            lan::host();
+        }
+    }
     match lan::status() {
         lan::Status::Joined(host) if menu.lan_joined != Some(host) => {
             menu.lan_joined = Some(host);
@@ -1291,7 +1300,11 @@ pub(crate) fn update(
             text.0 = value.to_owned();
         }
     };
-    write(menu.hint, TABS[menu.tab].hint);
+    if TABS[menu.tab].name == "ACCOUNT" {
+        write(menu.hint, &license::summary());
+    } else {
+        write(menu.hint, TABS[menu.tab].hint);
+    }
     // The LAN tab reports the network; every other tab, what the game said.
     if TABS[menu.tab].name == "LAN" {
         write(menu.status, &lan_status.line());

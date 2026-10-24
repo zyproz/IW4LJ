@@ -14,6 +14,7 @@ net.workspace = true
 render_anim.workspace = true
 render_gpu.workspace = true
 lan = { path = "../lan" }
+ring = "0.17.14"
 
 [lints]
 workspace = true

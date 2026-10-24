@@ -58,6 +58,8 @@ static TYPED: Mutex<String> = Mutex::new(String::new());
 pub const PROMPT_NAME: u32 = 1;
 /// The prompt that asks for a LAN host's IP address.
 pub const PROMPT_HOST_IP: u32 = 2;
+/// The prompt that asks for a licence key.
+pub const PROMPT_LICENSE: u32 = 3;
 
 pub(crate) fn request_prompt(kind: u32) {
     PROMPT.store(kind, Ordering::Relaxed);
@@ -91,6 +93,10 @@ pub fn typed_done(kind: u32) {
             (Ok(host), Some(port)) => lan::join_at(host, port),
             _ => diag::warn!(Launch, "lan: `{text}` is not an IPv4 address (optionally :port)"),
         }
+        return;
+    }
+    if kind == PROMPT_LICENSE {
+        crate::license::submit(&text);
         return;
     }
     if kind == PROMPT_NAME {

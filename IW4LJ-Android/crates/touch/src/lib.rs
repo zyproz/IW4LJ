@@ -24,6 +24,7 @@
 
 mod bridge;
 mod frame_cap;
+mod license;
 mod killcam_bars;
 mod menu;
 mod skins;
