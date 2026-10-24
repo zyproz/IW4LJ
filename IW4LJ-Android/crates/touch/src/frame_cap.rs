@@ -52,6 +52,10 @@ fn note_frame(clock: &mut ReadyClock) {
     clock.last = Some(now);
     // About five seconds of steady frames, so a brief calm in the middle of the
     // loading does not pass for the game being there.
+    // The menus are built and a few steady frames follow: the game is there.
+    if asset_game::menu_ready() && clock.smooth >= 30 {
+        READY.store(true, Ordering::Relaxed);
+    }
     if clock.smooth >= 300 && (clock.hitch || now - first > Duration::from_secs(30)) {
         READY.store(true, Ordering::Relaxed);
     }

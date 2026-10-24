@@ -599,7 +599,16 @@ pub fn load_ui_menu_catalog(games: &GamesRoot) -> (MenuCatalog, Vec<String>) {
         catalog.zone_image_n()
     ));
     report.extend(rebrand_for_trickshot(&mut catalog));
+    MENU_READY.store(true, std::sync::atomic::Ordering::Relaxed);
     (catalog, report)
+}
+
+/// Set once the game's menus are built: the launch screen ends soon after.
+static MENU_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the game's menus have been built (the main menu is about to draw).
+pub fn menu_ready() -> bool {
+    MENU_READY.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// The trickshot edition of the game's own menus: the button that creates a game

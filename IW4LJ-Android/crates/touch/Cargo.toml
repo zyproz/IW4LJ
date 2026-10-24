@@ -10,6 +10,7 @@ bevy.workspace = true
 console.workspace = true
 diag.workspace = true
 frame.workspace = true
+asset_game.workspace = true
 net.workspace = true
 render_anim.workspace = true
 render_gpu.workspace = true
