@@ -284,6 +284,16 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
                 askText(kind, "Host IP address (shown on the host's LAN tab)", 15, true);
             } else if (kind == 3) {
                 askText(kind, "License key (paste it here)", 400, false);
+            } else if (kind == 4) {
+                askText(kind, "Script for PAD UP (empty = none)", 40, false);
+            } else if (kind == 5) {
+                askText(kind, "Script for PAD DOWN (empty = none)", 40, false);
+            } else if (kind == 6) {
+                askText(kind, "Script for PAD LEFT (empty = none)", 40, false);
+            } else if (kind == 7) {
+                askText(kind, "Script for PAD RIGHT (empty = none)", 40, false);
+            } else if (kind == 8) {
+                askText(kind, "Button and script, e.g. BUTTON_Y glide", 60, false);
             }
             handler.postDelayed(this, 300);
         }

@@ -31,6 +31,7 @@ mod gamepad;
 pub mod input;
 mod local_account;
 mod local_profile;
+mod macros;
 pub mod plugin;
 pub mod registry;
 mod saved_position;
@@ -56,6 +57,7 @@ pub use plugin::{
 };
 pub use registry::{ArgCompleter, CommandSpec, ConsoleRegistry, StaticCompleter};
 pub use startup::{startup_commands, strip_cmds_flag};
+pub use macros::{macro_summary, set_macros_allowed};
 pub use synthetic_input::{ConsoleInputState, PRESS_SECONDS, PRESS_TICK_DT_MAX};
 pub use weapon_dispatch::{attach_completions, weapon_completions};
 

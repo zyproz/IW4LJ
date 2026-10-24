@@ -60,6 +60,12 @@ pub const PROMPT_NAME: u32 = 1;
 pub const PROMPT_HOST_IP: u32 = 2;
 /// The prompt that asks for a licence key.
 pub const PROMPT_LICENSE: u32 = 3;
+/// The prompts that tie a script to the D-pad, or to any button.
+pub const PROMPT_SCRIPT_UP: u32 = 4;
+pub const PROMPT_SCRIPT_DOWN: u32 = 5;
+pub const PROMPT_SCRIPT_LEFT: u32 = 6;
+pub const PROMPT_SCRIPT_RIGHT: u32 = 7;
+pub const PROMPT_SCRIPT_ANY: u32 = 8;
 
 pub(crate) fn request_prompt(kind: u32) {
     PROMPT.store(kind, Ordering::Relaxed);
@@ -92,6 +98,30 @@ pub fn typed_done(kind: u32) {
         match (address.trim().parse::<std::net::Ipv4Addr>(), port) {
             (Ok(host), Some(port)) => lan::join_at(host, port),
             _ => diag::warn!(Launch, "lan: `{text}` is not an IPv4 address (optionally :port)"),
+        }
+        return;
+    }
+    if (PROMPT_SCRIPT_UP..=PROMPT_SCRIPT_ANY).contains(&kind) {
+        // A script name, or `BUTTON_NAME script` for any other button.
+        let clean: String = text
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ' '))
+            .collect();
+        let clean = clean.trim();
+        let pad = match kind {
+            PROMPT_SCRIPT_UP => Some("DPAD_UP"),
+            PROMPT_SCRIPT_DOWN => Some("DPAD_DOWN"),
+            PROMPT_SCRIPT_LEFT => Some("DPAD_LEFT"),
+            PROMPT_SCRIPT_RIGHT => Some("DPAD_RIGHT"),
+            _ => None,
+        };
+        match pad {
+            Some(pad) => {
+                let name = if clean.is_empty() { "none" } else { clean };
+                push(BridgeEvent::Line(format!("macrobind {pad} {name}")));
+            }
+            None if !clean.is_empty() => push(BridgeEvent::Line(format!("macrobind {clean}"))),
+            None => {}
         }
         return;
     }

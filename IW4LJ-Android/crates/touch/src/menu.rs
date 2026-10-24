@@ -196,7 +196,7 @@ struct Tab {
     items: &'static [Item],
 }
 
-const TABS: [Tab; 5] = [
+const TABS: [Tab; 6] = [
     Tab {
         name: "TRICKSHOT",
         hint: "Create the game with TRICKSHOT GAME in the main menu (check GAME SETUP says Search and Destroy). Once in, BOT HERE puts a bot where you stand. Everyone can SAVE POSITION, LOAD POSITION and BOT HERE. The rest is for VIP: NOCLIP, MOVE BOT, FREEZE BOT and the other tools. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
@@ -216,6 +216,34 @@ const TABS: [Tab; 5] = [
             line("BOTS TO 1 HP", "bothp 1"),
             line("REFILL AMMO", "give ammo"),
             line("RESPAWN", "kill"),
+        ],
+    },
+    Tab {
+        name: "SCRIPTS",
+        hint: "Scripts for the pad (VIP).",
+        items: &[
+            Item {
+                label: "PAD UP SCRIPT",
+                act: Act::Prompt(crate::bridge::PROMPT_SCRIPT_UP),
+            },
+            Item {
+                label: "PAD DOWN SCRIPT",
+                act: Act::Prompt(crate::bridge::PROMPT_SCRIPT_DOWN),
+            },
+            Item {
+                label: "PAD LEFT SCRIPT",
+                act: Act::Prompt(crate::bridge::PROMPT_SCRIPT_LEFT),
+            },
+            Item {
+                label: "PAD RIGHT SCRIPT",
+                act: Act::Prompt(crate::bridge::PROMPT_SCRIPT_RIGHT),
+            },
+            Item {
+                label: "OTHER BUTTON",
+                act: Act::Prompt(crate::bridge::PROMPT_SCRIPT_ANY),
+            },
+            line("RELOAD SCRIPTS", "macroreload"),
+            line("CLEAR ALL", "macroclear"),
         ],
     },
     Tab {
@@ -580,6 +608,12 @@ fn small_print(act: Act) -> &'static str {
         Act::Lan(Lan::HostOnline) => "may need port forwarding (UDP 28960)",
         Act::Prompt(kind) if kind == crate::bridge::PROMPT_HOST_IP => "friend's IP, or IP:port",
         Act::Prompt(kind) if kind == crate::bridge::PROMPT_LICENSE => "paste the key from ZyProz",
+        Act::Prompt(kind) if kind == crate::bridge::PROMPT_SCRIPT_ANY => "e.g. BUTTON_Y glide",
+        Act::Prompt(kind)
+            if (crate::bridge::PROMPT_SCRIPT_UP..=crate::bridge::PROMPT_SCRIPT_RIGHT).contains(&kind) =>
+        {
+            "script name, empty = none"
+        }
         Act::QuickStart => "last map and bots",
         _ => "",
     }
@@ -1243,6 +1277,9 @@ pub(crate) fn update(
         .as_deref()
         .is_some_and(|authority| authority.0.cheats_enabled());
     let player_tier = tier();
+    // Scripts are a VIP tool, and only in a match that has cheats on (a
+    // trickshot lobby): never in someone else's game.
+    console::set_macros_allowed(player_tier != Tier::Free && (!in_match || cheats));
     for (index, tab) in TABS.iter().enumerate() {
         menu.allowed[index] = tab_allowed(tab.name, in_match, cheats, player_tier);
     }
@@ -1334,6 +1371,8 @@ pub(crate) fn update(
     };
     if TABS[menu.tab].name == "ACCOUNT" {
         write(menu.hint, &license::summary());
+    } else if TABS[menu.tab].name == "SCRIPTS" {
+        write(menu.hint, &console::macro_summary());
     } else {
         write(menu.hint, TABS[menu.tab].hint);
     }

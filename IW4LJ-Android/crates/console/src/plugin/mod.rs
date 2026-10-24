@@ -88,6 +88,8 @@ impl Plugin for ConsolePlugin {
             .init_resource::<ConsoleState>()
             .init_resource::<frame::HudInputView>()
             .init_resource::<ConsoleInputState>()
+            .init_resource::<crate::macros::MacroLibrary>()
+            .init_resource::<crate::macros::MacroRunner>()
             .init_resource::<KeyBinds>()
             .init_resource::<ConsoleCommandQueue>()
             .init_resource::<ConsoleDispatch>()
@@ -213,6 +215,8 @@ impl Plugin for ConsolePlugin {
                             crate::trickshot::route_trickshot_commands,
                             crate::trickshot::restore_looped_bot,
                             crate::trickshot::auto_spawn_in_loop,
+                            crate::macros::route_macro_commands,
+                            crate::macros::run_macros,
                         ),
                         crate::debug_script_mover::route_debug_script_mover_commands,
                         crate::debug_draw_method::route_debug_draw_method_commands,
@@ -811,6 +815,7 @@ fn setup_console(
     crate::debug_move::register_debug_move_commands(&mut registry);
     crate::saved_position::register_saved_position_commands(&mut registry);
     crate::trickshot::register_trickshot_commands(&mut registry);
+    crate::macros::register_macro_commands(&mut registry);
     crate::debug_script_mover::register_debug_script_mover_commands(&mut registry);
     crate::debug_draw_method::register_debug_draw_method_commands(&mut registry);
     crate::debug_view_proj::register_view_proj_commands(&mut registry);
