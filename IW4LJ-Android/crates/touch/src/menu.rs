@@ -1130,7 +1130,13 @@ pub(crate) fn drive_lan(
     // session is already under way.
     if !*auto_hosted && now >= AUTO_HOST_AFTER {
         *auto_hosted = true;
-        if !matches!(
+        // A community server (a `.iw4l-server` descriptor beside the game) is
+        // the master then: no relay of our own to start.
+        let community = std::env::var_os("IW4L_COMMUNITY")
+            .map(std::path::PathBuf::from)
+            .is_some_and(|path| path.file_name().is_none_or(|name| name != "lan.iw4l-server"));
+        if !community
+            && !matches!(
             lan::status(),
             lan::Status::Hosting | lan::Status::Searching | lan::Status::Joined(_)
         ) {
