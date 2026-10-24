@@ -189,7 +189,9 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
     }
 
     // The bar is an estimate: it fills quickly and slows down, then completes
-    // when the game reports that it is running steadily.
+    // when the game reports that it is running steadily. The screen stays up
+    // for as long as the game takes to load (a slow phone needs minutes), and
+    // the bar never claims 100 % before the game is really there.
     private final Runnable launchTick = new Runnable() {
         @Override
         public void run() {
@@ -197,7 +199,7 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
                 return;
             }
             long elapsed = SystemClock.uptimeMillis() - launchStart;
-            if (nativeIsReady() || elapsed > 45000) {
+            if (nativeIsReady() || elapsed > 600000) {
                 launchProgress = 1f;
                 updateLaunchBar();
                 handler.postDelayed(() -> {
@@ -205,10 +207,11 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
                     launchScreen = null;
                     launchFill = null;
                     launchText = null;
-                }, 300);
+                }, 800);
                 return;
             }
-            launchProgress += (0.92f - launchProgress) * 0.03f;
+            float cap = elapsed < 40000 ? 0.90f : 0.99f;
+            launchProgress += (cap - launchProgress) * 0.01f;
             updateLaunchBar();
             handler.postDelayed(this, 100);
         }

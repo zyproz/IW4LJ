@@ -30,7 +30,7 @@ pub(crate) struct ReadyClock {
 }
 
 /// The loading shows as long frames (or none at all). The game counts as ready
-/// once two seconds of steady frames follow a long one, or after thirty
+/// once five seconds of steady frames follow a long one, or after thirty
 /// seconds when nothing ever had to load.
 fn note_frame(clock: &mut ReadyClock) {
     if READY.load(Ordering::Relaxed) {
@@ -50,7 +50,9 @@ fn note_frame(clock: &mut ReadyClock) {
         }
     }
     clock.last = Some(now);
-    if clock.smooth >= 120 && (clock.hitch || now - first > Duration::from_secs(30)) {
+    // About five seconds of steady frames, so a brief calm in the middle of the
+    // loading does not pass for the game being there.
+    if clock.smooth >= 300 && (clock.hitch || now - first > Duration::from_secs(30)) {
         READY.store(true, Ordering::Relaxed);
     }
 }
