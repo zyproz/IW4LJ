@@ -105,14 +105,18 @@ jobs:
               -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass iw4l-ci-pass -keypass iw4l-ci-pass -dname "CN=IW4LJ CI"
           fi
+          # The version is part of the file name, so everyone knows what they install.
+          VER=$(grep -o 'android:versionName="[^"]*"' "$C/android/AndroidManifest.xml" | head -1 | cut -d'"' -f2)
+          [ -n "$VER" ] || VER=unknown
+          OUT="$B/MW2-Mobile-$VER.apk"
           "$BT/apksigner" sign --ks ks/iw4l.keystore --ks-pass pass:iw4l-ci-pass \
             --ks-key-alias iw4l --key-pass pass:iw4l-ci-pass \
-            --out "$B/MW2-Mobile.apk" "$B/aligned.apk"
-          "$BT/apksigner" verify --verbose "$B/MW2-Mobile.apk"
-          ls -l "$B/MW2-Mobile.apk"
+            --out "$OUT" "$B/aligned.apk"
+          "$BT/apksigner" verify --verbose "$OUT"
+          ls -l "$OUT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: IW4LJ-fresh-build
-          path: build/MW2-Mobile.apk
+          path: build/MW2-Mobile-*.apk
           if-no-files-found: error

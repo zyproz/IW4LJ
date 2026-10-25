@@ -143,16 +143,27 @@ fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
     }
 }
 
-/// A free player has two trickshot tools: SAVE POSITION and LOAD POSITION.
-/// Every other button of the tab is for a VIP or an admin; a free player still
-/// sees them, they just do nothing.
+/// A free player has four trickshot tools: SAVE POSITION, LOAD POSITION, BOT HERE
+/// and CHANGE CLASS. Every other button of the tab is for a VIP or an admin and
+/// is hidden from a free player (they come last in the tab, so the ones that
+/// stay are the first).
+/// How many buttons of a tab this player sees (the free ones come first).
+fn visible_items(tab: usize) -> usize {
+    (0..TABS[tab].items.len())
+        .filter(|item| !locked(tab, *item))
+        .count()
+}
+
 fn locked(tab: usize, item: usize) -> bool {
     if tier() != Tier::Free {
         return false;
     }
     let label = TABS[tab].items[item].label;
     match TABS[tab].name {
-        "TRICKSHOT" => !matches!(label, "SAVE POSITION" | "LOAD POSITION" | "BOT HERE"),
+        "TRICKSHOT" => !matches!(
+            label,
+            "SAVE POSITION" | "LOAD POSITION" | "BOT HERE" | "CHANGE CLASS"
+        ),
         // A free player may rename themselves and enter a key; the unlocks
         // and prestiges are for a VIP.
         "ACCOUNT" => !matches!(label, "CHANGE NAME" | "ENTER LICENSE KEY"),
@@ -200,15 +211,17 @@ const TABS: [Tab; 6] = [
     Tab {
         name: "TRICKSHOT",
         hint: "Create the game with TRICKSHOT GAME in the main menu (check GAME SETUP says Search and Destroy). Once in, BOT HERE puts a bot where you stand. Everyone can SAVE POSITION, LOAD POSITION and BOT HERE. The rest is for VIP: NOCLIP, MOVE BOT, FREEZE BOT and the other tools. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
+        // What a free player may use comes first: the rest is hidden from them.
         items: &[
             line("SAVE POSITION", "save"),
             line("LOAD POSITION", "load"),
+            line("BOT HERE", "bothere"),
+            line("CHANGE CLASS", "openmenu changeclass"),
             toggle("SPAWN AT SAVED", 0, "loadspawn on", "loadspawn off"),
             toggle("NOCLIP", 1, "noclip on", "noclip off"),
             toggle("GOD MODE", 2, "god", "god"),
             toggle("PAD SAVE/LOAD", 5, "", ""),
             toggle("EXPLOSIVE BULLETS", 6, "explosivebullets on", "explosivebullets off"),
-            line("BOT HERE", "bothere"),
             line("MOVE BOT", "botmove"),
             line("FREEZE BOT", "botfreeze"),
             line("NEXT KILL WINS", "lastkill"),
@@ -958,6 +971,10 @@ fn run(menu: &mut ModMenu, target: Target, queue: &mut ConsoleQueue, now: f32) {
             Act::Line(line) => {
                 remember_setup(line);
                 queue.push_line(line);
+                // A game menu opens under this one: get out of its way.
+                if line.starts_with("openmenu ") {
+                    menu.open = false;
+                }
             }
             Act::QuickStart => queue.push_line(&quick_start_script()),
             Act::Toggle { slot, on, off } => {
@@ -1044,7 +1061,7 @@ pub(crate) fn pad_menu(
     if !menu.open {
         return;
     }
-    let items = TABS[menu.tab].items.len();
+    let items = visible_items(menu.tab);
     let mut moved = false;
     let mut step = |menu: &mut ModMenu, delta: i32| {
         let next = menu.focus as i32 + delta;
@@ -1311,8 +1328,11 @@ pub(crate) fn update(
     }
     // Only the skins tab is offered when the rest is cheats.
     for (entity, target) in &menu.targets {
-        if let Target::Tab(tab) = *target {
-            show(&mut nodes, Some(*entity), menu.allowed[tab]);
+        match *target {
+            Target::Tab(tab) => show(&mut nodes, Some(*entity), menu.allowed[tab]),
+            // A free player sees only the buttons they can use.
+            Target::Item(tab, item) => show(&mut nodes, Some(*entity), !locked(tab, item)),
+            Target::Close => {}
         }
     }
     if menu
