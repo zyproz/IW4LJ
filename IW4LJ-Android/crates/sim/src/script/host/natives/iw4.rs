@@ -32,6 +32,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         }
         let name = dvar_name(args)?;
         let value = dvar_value(args)?;
+        note_dvar(&name, &value, true);
         let mut runtime = world.resource_mut::<crate::script::MatchScript>();
         let slot = runtime.dvars.entry(name).or_default();
         if slot.is_empty() {
@@ -249,12 +250,48 @@ fn dvar(world: &mut World, args: &[Value]) -> Result<String, String> {
         _ => return Err("wrong number of parameters".into()),
     };
     let name = string(args, 0)?.to_ascii_lowercase();
-    Ok(world
+    let found = world
         .resource_mut::<crate::script::MatchScript>()
         .dvars
         .get(&name)
-        .cloned()
-        .unwrap_or(fallback))
+        .cloned();
+    note_dvar(&name, found.as_deref().unwrap_or(&fallback), found.is_some());
+    Ok(found.unwrap_or(fallback))
+}
+
+/// Writes the score and experience settings the game's scripts read into
+/// `gsc-dvars.txt` next to the game's files, once each, so that a value the
+/// scripts use (a kill's points, say) can be found and changed.
+fn note_dvar(name: &str, value: &str, found: bool) {
+    use std::io::Write;
+    use std::sync::{Mutex, OnceLock};
+    const KEYS: [&str; 7] = ["xp", "score", "kill", "point", "bonus", "rank", "streak"];
+    if !KEYS.iter().any(|key| name.contains(key)) {
+        return;
+    }
+    static SEEN: OnceLock<Mutex<std::collections::BTreeSet<String>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    let Ok(mut seen) = seen.lock() else {
+        return;
+    };
+    if !seen.insert(format!("{name}={value}")) {
+        return;
+    }
+    for root in [
+        "/sdcard/Android/media/dev.iw4j.iw4l",
+        "/storage/emulated/0/Android/media/dev.iw4j.iw4l",
+    ] {
+        if std::path::Path::new(root).is_dir() {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(format!("{root}/gsc-dvars.txt"))
+            {
+                let _ = writeln!(file, "{name} = {value}{}", if found { "" } else { "  (default)" });
+            }
+            break;
+        }
+    }
 }
 
 fn dvar_name(args: &[Value]) -> Result<String, String> {
