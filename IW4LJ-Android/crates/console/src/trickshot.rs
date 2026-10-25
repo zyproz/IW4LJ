@@ -20,7 +20,7 @@ use crate::{ConsoleCommand, ConsoleLine, ConsoleQueue, ConsoleRegistry, ConsoleS
 const SCORED_MODES: [&str; 8] = ["dm", "war", "dom", "koth", "sab", "ctf", "dd", "sd"];
 
 /// The rules of a trickshot Search and Destroy match.
-const TRICKSHOT_RULES: [(&str, &str); 7] = [
+const TRICKSHOT_RULES: [(&str, &str); 8] = [
     // No round clock: line the shot up for as long as it takes.
     ("scr_sd_timelimit", "0"),
     // The first round won is the match, so its last kill is the final killcam.
@@ -31,6 +31,8 @@ const TRICKSHOT_RULES: [(&str, &str); 7] = [
     ("scr_sd_numlives", "0"),
     ("scr_game_playerwaittime", "0"),
     ("scr_game_matchstarttime", "0"),
+    // What a kill is worth on the screen (+550): the scripts read this override.
+    ("scr_sd_score_kill", "550"),
 ];
 
 pub(crate) fn register_trickshot_commands(registry: &mut ConsoleRegistry) {

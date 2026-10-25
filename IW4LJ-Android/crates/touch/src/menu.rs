@@ -121,25 +121,50 @@ fn tier() -> Tier {
     license::tier()
 }
 
-/// A match someone else hosts (or without cheats) offers only the skin picker,
-/// and only to a VIP or admin. Otherwise a free player has the trickshot tab in
-/// a match, and the trickshot and graphics tabs on the main menu; a VIP or
-/// admin also has the skins and account tabs.
-fn tab_allowed(name: &str, in_match: bool, cheats: bool, tier: Tier) -> bool {
-    if in_match && !cheats {
-        return name == "SKINS" && tier != Tier::Free;
+/// Where the player is: the main menu, a Search and Destroy trickshot game they
+/// host, any other game they host, or a game someone else hosts.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Menu,
+    Trickshot,
+    Normal,
+    Joined,
+}
+
+/// Which tabs this player may use here.
+///
+/// The graphics tab is always there. The trickshot tab, and the scripts that go
+/// with it, exist only in a trickshot game. In any other game the player hosts,
+/// the bots tab is there, for everyone. A game someone else hosts offers the
+/// skin picker to a VIP or an admin, and nothing more.
+fn tab_allowed(name: &str, mode: Mode, tier: Tier) -> bool {
+    if name == "GRAPHICS" {
+        return true;
     }
-    match tier {
-        Tier::Admin | Tier::Vip => true,
-        Tier::Free => {
-            if in_match {
-                name == "TRICKSHOT"
+    let vip = tier != Tier::Free;
+    match mode {
+        Mode::Menu => {
+            if vip {
+                name != "BOTS"
             } else {
-                // The account tab is where a free player finds their ID and
-                // enters a key.
-                name == "TRICKSHOT" || name == "LAN" || name == "GRAPHICS" || name == "ACCOUNT"
+                matches!(name, "TRICKSHOT" | "LAN" | "ACCOUNT")
             }
         }
+        Mode::Trickshot => {
+            if vip {
+                name != "BOTS"
+            } else {
+                matches!(name, "TRICKSHOT" | "ACCOUNT")
+            }
+        }
+        Mode::Normal => {
+            if vip {
+                matches!(name, "BOTS" | "SKINS" | "ACCOUNT")
+            } else {
+                matches!(name, "BOTS" | "ACCOUNT")
+            }
+        }
+        Mode::Joined => vip && name == "SKINS",
     }
 }
 
@@ -166,7 +191,7 @@ fn locked(tab: usize, item: usize) -> bool {
         ),
         // A free player may rename themselves and enter a key; the unlocks
         // and prestiges are for a VIP.
-        "ACCOUNT" => !matches!(label, "CHANGE NAME" | "ENTER LICENSE KEY"),
+        "ACCOUNT" => !matches!(label, "CHANGE NAME" | "ENTER LICENSE KEY" | "GIVE AMMO"),
         _ => false,
     }
 }
@@ -207,7 +232,7 @@ struct Tab {
     items: &'static [Item],
 }
 
-const TABS: [Tab; 6] = [
+const TABS: [Tab; 7] = [
     Tab {
         name: "TRICKSHOT",
         hint: "Create the game with TRICKSHOT GAME in the main menu (check GAME SETUP says Search and Destroy). Once in, BOT HERE puts a bot where you stand. Everyone can SAVE POSITION, LOAD POSITION and BOT HERE. The rest is for VIP: NOCLIP, MOVE BOT, FREEZE BOT and the other tools. Noclip to a spot, save it, and every respawn puts you back there. Controller: turn on PAD SAVE/LOAD, then hold SELECT and press D-PAD LEFT to save, D-PAD RIGHT to load.",
@@ -257,6 +282,17 @@ const TABS: [Tab; 6] = [
             },
             line("RELOAD SCRIPTS", "macroreload"),
             line("CLEAR ALL", "macroclear"),
+        ],
+    },
+    Tab {
+        name: "BOTS",
+        hint: "Bots for the other game modes (free-for-all, team deathmatch, domination...). They play like real players: they shoot and go for the objectives. An ally joins your team, an enemy the other one; in free-for-all every bot is against you. Only in a game you host.",
+        items: &[
+            line("ENEMY BOT", "botenemy 1"),
+            line("3 ENEMY BOTS", "botenemy 3"),
+            line("5 ENEMY BOTS", "botenemy 5"),
+            line("ALLY BOT", "botally 1"),
+            line("3 ALLY BOTS", "botally 3"),
         ],
     },
     Tab {
@@ -415,6 +451,7 @@ const TABS: [Tab; 6] = [
                 label: "ENTER LICENSE KEY",
                 act: Act::Prompt(crate::bridge::PROMPT_LICENSE),
             },
+            line("GIVE AMMO", "give ammo"),
             line("UNLOCK ALL", "unlock all"),
             line("RESET LEVEL", "unlock reset"),
             line("NO PRESTIGE", "prestige 0"),
@@ -432,14 +469,14 @@ const TABS: [Tab; 6] = [
     },
     Tab {
         name: "GRAPHICS",
-        hint: "Performance holds the frame rate and keeps the phone cool. The game is held to 60 fps so it stays cool in a long session; FPS 30 gives an even 30 on a slow phone; FPS 90 and FPS 120 are for phones that can sustain more. SYNC OFF shows frames as soon as they are ready: faster on a slow phone, but uneven; it applies at the next start. Render and texture settings apply the next time the game starts.",
+        hint: "Performance holds the frame rate and keeps the phone cool. The game is held to 60 fps so it stays cool in a long session; FPS 57 is the rate the pad scripts are made for (it holds the game to it); FPS 90 and FPS 120 are for phones that can sustain more. SYNC OFF shows frames as soon as they are ready: faster on a slow phone, but uneven; it applies at the next start. Render and texture settings apply the next time the game starts.",
         items: &[
             set("PERFORMANCE", Setting::Preset, 2),
             set("BALANCED", Setting::Preset, 1),
             set("QUALITY", Setting::Preset, 0),
             set("SHOW FPS", Setting::ShowFps, 1),
             set("HIDE FPS", Setting::ShowFps, 0),
-            set("FPS 30", Setting::FpsCap, 30),
+            set("FPS 57", Setting::FpsCap, 57),
             set("FPS 60", Setting::FpsCap, 60),
             set("FPS 90", Setting::FpsCap, 90),
             set("FPS 120", Setting::FpsCap, 120),
@@ -684,7 +721,7 @@ pub(crate) fn spawn(mut commands: Commands, mut menu: ResMut<ModMenu>) {
     };
     menu.show_fps = read_setting(Setting::ShowFps) == 1;
     menu.fps_cap = match read_setting(Setting::FpsCap) {
-        fps @ (0 | 30 | 60 | 90 | 120) => fps,
+        fps @ (0 | 30 | 57 | 60 | 90 | 120) => fps,
         _ => FPS_CAP_DEFAULT,
     };
     crate::frame_cap::set_cap(menu.fps_cap as u32);
@@ -1282,6 +1319,9 @@ pub(crate) fn update(
     mut texts: Query<&mut Text>,
     screen: Option<Res<frame::AppScreen>>,
     authority: Option<Res<net::AuthorityWorld>>,
+    presented: Res<net::PresentedSnapshot>,
+    local: Res<net::LocalPresentClient>,
+    setup: Res<frame::MatchSetup>,
 ) {
     menu.skins_only = crate::skins_only(screen.as_deref(), authority.as_deref());
     let in_match = screen.as_deref().is_some_and(|screen| {
@@ -1294,11 +1334,27 @@ pub(crate) fn update(
         .as_deref()
         .is_some_and(|authority| authority.0.cheats_enabled());
     let player_tier = tier();
+    // Which game this is: the trickshot tools belong to Search and Destroy.
+    let gametype = presented
+        .snapshot()
+        .and_then(|snapshot| snapshot.meta.script_dvars(local.0).string("g_gametype"))
+        .map(str::to_owned)
+        .or_else(|| setup.gametype.clone());
+    let hosting = authority.is_some();
+    let mode = if !in_match {
+        Mode::Menu
+    } else if !hosting {
+        Mode::Joined
+    } else if cheats && gametype.as_deref().is_none_or(|mode| mode == "sd") {
+        Mode::Trickshot
+    } else {
+        Mode::Normal
+    };
     // Scripts are a VIP tool, and only in a match that has cheats on (a
     // trickshot lobby): never in someone else's game.
     console::set_macros_allowed(player_tier != Tier::Free && (!in_match || cheats));
     for (index, tab) in TABS.iter().enumerate() {
-        menu.allowed[index] = tab_allowed(tab.name, in_match, cheats, player_tier);
+        menu.allowed[index] = tab_allowed(tab.name, mode, player_tier);
     }
     if !menu.allowed[menu.tab]
         && let Some(first) = menu.allowed.iter().position(|allowed| *allowed)

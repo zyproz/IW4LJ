@@ -31,6 +31,7 @@ mod gamepad;
 pub mod input;
 mod local_account;
 mod local_profile;
+mod botteam;
 mod macros;
 pub mod plugin;
 pub mod registry;

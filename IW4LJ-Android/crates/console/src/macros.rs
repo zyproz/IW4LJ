@@ -7,8 +7,9 @@
 //! ```
 //!
 //! It is a list of input commands (`+attack`, `-attack`, `+usereload`,
-//! `weapnext`, ...) and `wait N`, where `N` counts frames of a 60 frames per
-//! second game, whatever the real frame rate is. `vstr other` plays another
+//! `weapnext`, ...) and `wait N`, where `N` counts frames of a 57 frames per
+//! second game (the rate the scripts are made for), whatever the real frame
+//! rate is. `vstr other` plays another
 //! script in place. A script is tied to a pad button with `macrobind`, and the
 //! pad button then plays it instead of its usual action.
 //!
@@ -40,8 +41,9 @@ const ROOTS: [&str; 2] = [
     "/storage/emulated/0/Android/media/dev.iw4j.iw4l",
 ];
 
-/// The frame rate the scripts' waits are counted in.
-const SCRIPT_FPS: f32 = 60.0;
+/// The frame rate the scripts' waits are counted in (FPS 57 in GRAPHICS holds
+/// the game to it).
+const SCRIPT_FPS: f32 = 57.0;
 /// A tap lasts one frame of that frame rate.
 const TAP_SECONDS: f32 = 1.0 / SCRIPT_FPS;
 const MAX_CALL_DEPTH: usize = 8;
@@ -68,7 +70,7 @@ pub fn macro_summary() -> String {
 pub(crate) enum Step {
     /// An input command such as `+attack`, `-attack` or `weapnext`.
     Input(String),
-    /// Frames of a 60 frames per second game.
+    /// Frames of a 57 frames per second game.
     Wait(f32),
     /// `vstr name`: another script, played in place.
     Call(String),
@@ -331,7 +333,7 @@ fn refresh_summary(library: &MacroLibrary, runner: &MacroRunner) {
         }
     }
     line.push_str(&format!(
-        "  ({} scripts loaded, {} commands left out). Edit scripts.cfg in Android/media/dev.iw4j.iw4l then RELOAD SCRIPTS.",
+        "  ({} scripts loaded, {} commands left out). Edit scripts.cfg in Android/media/dev.iw4j.iw4l then RELOAD SCRIPTS. Hold the game at FPS 57 in GRAPHICS: the scripts are made for it.",
         library.macros.len(),
         library.skipped
     ));
