@@ -1120,7 +1120,7 @@ impl MenuSink {
         if self.catalog.zone_images.contains_key(&key) {
             return;
         }
-        // MW2 MOBILE: the main menu pictures are replaced by our own artwork.
+        // Legacy Warfare: the main menu pictures are replaced by our own artwork.
         if matches!(
             key.as_str(),
             "mw2_main_background" | "mw2_main_mp_image" | "mw2_main_co_image" | "mw2_main_sp_image"
@@ -1133,7 +1133,7 @@ impl MenuSink {
                 rgba: Arc::new(MW2_MOBILE_MENU_BG.to_vec()),
                 source: "custom",
             };
-            diag::info!(Zone, "menu catalog: UI image {bare} -> MW2 MOBILE artwork");
+            diag::info!(Zone, "menu catalog: UI image {bare} -> Legacy Warfare artwork");
             self.catalog.zone_images.insert(key, rec);
             return;
         }

@@ -111,7 +111,7 @@ public class LaunchActivity extends Activity {
 
     private String buildReport() {
         StringBuilder out = new StringBuilder();
-        out.append("MW2 MOBILE did not start last time.\n\n");
+        out.append("Legacy Warfare did not start last time.\n\n");
         out.append("== Game files ==\n").append(gameFiles()).append("\n");
         String panic = readFile(new File(getFilesDir(), CRASH_FILE));
         out.append("== Error saved by the app ==\n")
@@ -209,8 +209,8 @@ public class LaunchActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText(fr ? "MW2 MOBILE a besoin des fichiers du jeu"
-            : "MW2 MOBILE needs the game files");
+        title.setText(fr ? "Legacy Warfare a besoin des fichiers du jeu"
+            : "Legacy Warfare needs the game files");
         title.setTextColor(0xFF39FF14);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextSize(20);
@@ -362,7 +362,7 @@ public class LaunchActivity extends Activity {
         buttons.setGravity(Gravity.CENTER);
         buttons.addView(button("Copy", v -> {
             ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
-                .setPrimaryClip(ClipData.newPlainText("MW2 MOBILE report", report));
+                .setPrimaryClip(ClipData.newPlainText("Legacy Warfare report", report));
             Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show();
         }));
         buttons.addView(button("Share", v -> {

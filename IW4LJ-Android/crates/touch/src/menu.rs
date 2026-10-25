@@ -750,7 +750,7 @@ pub(crate) fn spawn(mut commands: Commands, mut menu: ResMut<ModMenu>) {
     menu.fps = Some(fps);
 
     // Header: title, tabs, close.
-    let title = label(&mut commands, "MW2 MOBILE  //  MENU", 4.2, ACCENT);
+    let title = label(&mut commands, "LEGACY WARFARE  //  MENU", 4.2, ACCENT);
     let header = commands
         .spawn((
             Node {
