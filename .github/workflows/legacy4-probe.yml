@@ -40,6 +40,25 @@ jobs:
           rustup target add aarch64-linux-android
           { echo "rustc: $(rustc --version)"; echo "cargo: $(cargo --version)"; echo "commit: $(git rev-parse HEAD)"; } | tee ../versions.txt
 
+      - name: Deux corrections minimales pour Android (test, sans toucher au dépôt d'origine)
+        working-directory: cod4
+        run: |
+          python3 - <<'PY'
+          p = "crates/client/Cargo.toml"
+          s = open(p).read()
+          # 1. le sélecteur de dossier (rfd) n'existe que sur ordinateur
+          s = s.replace('install = { path = "../install", features = ["prompt"] }', 'install = { path = "../install" }')
+          s += """
+          # The folder dialog only exists on desktop.
+          [target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
+          install = { path = "../install", features = ["prompt"] }
+          """.replace("\n          ", "\n")
+          # 2. winit doit savoir qu'il tourne sur Android
+          s = s.replace('winit = "0.30.13"', 'winit = { version = "0.30.13", features = ["android-native-activity"] }')
+          open(p, "w").write(s)
+          PY
+          git diff --stat
+
       - name: Compiler le client pour Android (peut échouer, c'est le but du test)
         id: build
         continue-on-error: true
@@ -52,7 +71,7 @@ jobs:
           export AR_aarch64_linux_android="$BIN/llvm-ar"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android31-clang"
           set -o pipefail
-          cargo build -p client --release --target aarch64-linux-android --message-format short 2>&1 | tee ../build.log
+          cargo build -p client --release --target aarch64-linux-android --message-format short --keep-going 2>&1 | tee ../build.log
 
       - name: Résumé
         if: always()
