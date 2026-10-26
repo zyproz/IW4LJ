@@ -1,0 +1,70 @@
+# Legacy 4 : test de faisabilité. Essaie de compiler pour Android le moteur
+# CoD4 open source jeiang/cod4-decomp (GPL-3.0) et garde le journal.
+# Ça ne produit PAS d'appli jouable : c'est une mesure de ce qui bloque.
+# Lancer : gh workflow run legacy4-probe.yml -R zyproz/IW4LJ
+# Résultat : artifact "legacy4-probe-log" (build.log + versions.txt).
+
+name: Legacy 4 - test Android
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: jeiang/cod4-decomp
+          path: cod4
+
+      - name: Libérer de la place disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - name: Paquets système
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config
+
+      - name: SDK et NDK Android
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "ndk;28.2.13676358"
+
+      - name: Rust (version choisie par le projet) et cible Android
+        working-directory: cod4
+        run: |
+          rustup show
+          rustup target add aarch64-linux-android
+          { echo "rustc: $(rustc --version)"; echo "cargo: $(cargo --version)"; echo "commit: $(git rev-parse HEAD)"; } | tee ../versions.txt
+
+      - name: Compiler le client pour Android (peut échouer, c'est le but du test)
+        id: build
+        continue-on-error: true
+        working-directory: cod4
+        run: |
+          NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$BIN/aarch64-linux-android31-clang"
+          export CXX_aarch64_linux_android="$BIN/aarch64-linux-android31-clang++"
+          export AR_aarch64_linux_android="$BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android31-clang"
+          set -o pipefail
+          cargo build -p client --release --target aarch64-linux-android --message-format short 2>&1 | tee ../build.log
+
+      - name: Résumé
+        if: always()
+        run: |
+          echo "Résultat de la compilation : ${{ steps.build.outcome }}" | tee -a versions.txt
+          grep -E "^(error|warning: unused)" build.log | sort | uniq -c | sort -rn | head -20 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy4-probe-log
+          path: |
+            build.log
+            versions.txt
+          if-no-files-found: warn
