@@ -52,3 +52,9 @@ Le module est partagé par toutes les applis Legacy Mobile :
 - VIP : même système que Legacy Warfare (`android.rs`, `license_pub.hex`) : `player-id.txt` dans le dossier de
   l'appli, clé `vip.<ID>.<expiration>.<signature>` créée avec `mw2keys.sh`, à coller dans ACCOUNT.
   Gratuit : SAVE/LOAD POSITION, BOT HERE. VIP : noclip, god mode, geler/relancer les bots.
+
+## 0.6
+- AIM tactile : interrupteur (un appui = viser, un autre = arrêter), et on peut viser en glissant le doigt dessus.
+  Réglable dans CONTROLS (interrupteur ou maintenu).
+- Balles explosives (VIP, hôte) : `l4explosive`, explosion à l'impact (`patch_client.py` étape 10, `fire.rs`).
+- UNLOCK ALL (VIP, onglet ACCOUNT) : `l4unlockall`, mêmes déblocages que le profil du harness (`profile::unlocked_stats`).

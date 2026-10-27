@@ -80,6 +80,9 @@ public class TouchPad extends View {
     float opacity = 0.55f;
     /** Size of the buttons, 1 = default. */
     float scale = 1f;
+    /** AIM is a switch (tap to aim, tap again to stop) rather than held. */
+    boolean aimToggle = true;
+    private boolean aimOn;
 
     // What each finger is doing.
     private static final int STICK = -2, LOOK = -3, MOUSE = -4;
@@ -212,8 +215,15 @@ public class TouchPad extends View {
                 role.put(id, MOUSE - 100); // swallowed
                 return;
             }
-            btn.down = true;
-            GameActivity.pressButton(btn.key, true);
+            if (btn.key == AIM && aimToggle) {
+                // A switch: the finger is free to turn the view, and the aim stays on without holding.
+                aimOn = !aimOn;
+                btn.down = aimOn;
+                GameActivity.pressButton(AIM, aimOn);
+            } else {
+                btn.down = true;
+                GameActivity.pressButton(btn.key, true);
+            }
             role.put(id, b);
             last.put(id, new float[] {x, y});
             invalidate();
@@ -255,8 +265,8 @@ public class TouchPad extends View {
             knobY = stickY + dy;
             GameActivity.stick(dx / max, -dy / max);
             invalidate();
-        } else if (r == LOOK || (r >= 0 && buttons[r].key == FIRE)) {
-            // FIRE turns the view while held, as on most phone shooters.
+        } else if (r == LOOK || (r >= 0 && (buttons[r].key == FIRE || buttons[r].key == AIM))) {
+            // FIRE and AIM turn the view while held, as on most phone shooters.
             float[] p = last.get(id);
             if (p != null) {
                 GameActivity.look(x - p[0], y - p[1]);
@@ -280,6 +290,9 @@ public class TouchPad extends View {
             GameActivity.stick(0f, 0f);
             invalidate();
         } else if (r >= 0) {
+            if (buttons[r].key == AIM && aimToggle) {
+                return; // stays as the switch left it
+            }
             buttons[r].down = false;
             GameActivity.pressButton(buttons[r].key, false);
             invalidate();
@@ -288,6 +301,7 @@ public class TouchPad extends View {
 
     /** Lets go of everything (a menu opened, the app was left). */
     void releaseAll() {
+        aimOn = false;
         for (Btn b : buttons) {
             if (b.down) {
                 b.down = false;

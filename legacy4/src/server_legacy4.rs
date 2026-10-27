@@ -19,6 +19,14 @@ fn saved() -> std::sync::MutexGuard<'static, Option<HashMap<u16, Spot>>> {
     SAVED.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Players whose bullets explode where they land.
+static EXPLOSIVE: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+
+/// Whether `slot`'s bullets explode (read by `apply_bullet_hits`).
+pub fn explosive(slot: u16) -> bool {
+    EXPLOSIVE.lock().unwrap_or_else(|e| e.into_inner()).contains(&slot)
+}
+
 impl Game {
     /// Carries out one Legacy 4 command for client `slot`; returns what to tell the player.
     pub fn legacy4_command(&mut self, slot: u16, verb: &str, host: bool) -> String {
@@ -77,6 +85,17 @@ impl Game {
                     }
                     None => "No bot in the game: add one in the BOTS tab".to_owned(),
                 }
+            }
+            "l4explosive" => {
+                let mut list = EXPLOSIVE.lock().unwrap_or_else(|e| e.into_inner());
+                let on = if list.contains(&slot) {
+                    list.retain(|s| *s != slot);
+                    false
+                } else {
+                    list.push(slot);
+                    true
+                };
+                format!("Explosive bullets {}", if on { "ON" } else { "OFF" })
             }
             "l4botfreeze" | "l4botmove" => {
                 let freeze = verb == "l4botfreeze";

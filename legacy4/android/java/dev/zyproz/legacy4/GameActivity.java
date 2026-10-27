@@ -155,6 +155,7 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
         if (pad != null) {
             pad.opacity = prefs.getFloat("opacity", 0.55f);
             pad.scale = prefs.getFloat("size", 1f);
+            pad.aimToggle = prefs.getBoolean("aim_toggle", true);
             pad.invalidate();
         }
     }

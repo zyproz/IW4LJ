@@ -1,7 +1,7 @@
-# Legacy 4 (CoD4 sur Android), version 0.5 : compile le moteur open source jeiang/cod4-decomp (GPL-3.0)
+# Legacy 4 (CoD4 sur Android), version 0.6 : compile le moteur open source jeiang/cod4-decomp (GPL-3.0)
 # pour Android, ajoute l'entrée Android de legacy4/ et assemble un APK signé.
 # Lancer : gh workflow run legacy4-android.yml -R zyproz/IW4LJ
-# Résultat : artifact "Legacy4-0.5" (l'APK, plus build.log si ça échoue).
+# Résultat : artifact "Legacy4-0.6" (l'APK, plus build.log si ça échoue).
 
 name: Legacy 4 - APK Android
 
@@ -157,7 +157,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Legacy4-0.5
+          name: Legacy4-0.6
           path: |
             build/Legacy4-*.apk
             build.log

@@ -135,10 +135,11 @@ public class ModMenu extends LinearLayout {
         row(cmd("SAVE POSITION", "l4save"), cmd("LOAD POSITION", "l4load"), cmd("BOT HERE", "l4bothere"));
         if (vip()) {
             hint("VIP (works in a game you host):");
-            row(cmd("NOCLIP ON/OFF", "l4noclip"), cmd("GOD MODE ON/OFF", "l4god"));
+            row(cmd("NOCLIP ON/OFF", "l4noclip"), cmd("EXPLOSIVE BULLETS", "l4explosive"),
+                    cmd("GOD MODE ON/OFF", "l4god"));
             row(cmd("FREEZE BOT", "l4botfreeze"), cmd("MOVE BOT", "l4botmove"));
         } else {
-            hint("Noclip, god mode, freeze/move bot: VIP only (ACCOUNT tab).");
+            hint("Noclip, explosive bullets, god mode, freeze/move bot: VIP only (ACCOUNT tab).");
         }
         hint("Trickshot game: LAN tab > pick the mode and a map, then add a bot in the BOTS tab.");
     }
@@ -211,6 +212,14 @@ public class ModMenu extends LinearLayout {
                 setting("BUTTONS BRIGHTER", "opacity", Math.min(1f, opacity + 0.1f)));
         row(setting("BUTTONS SMALLER", "size", Math.max(0.7f, size - 0.1f)),
                 setting("BUTTONS BIGGER", "size", Math.min(1.4f, size + 0.1f)));
+        boolean toggle = prefs.getBoolean("aim_toggle", true);
+        Button aim = button(toggle ? "AIM: TAP TO SWITCH (ON)" : "AIM: HOLD (ON)", false);
+        aim.setOnClickListener(v -> {
+            prefs.edit().putBoolean("aim_toggle", !toggle).apply();
+            host.controlsChanged();
+            show(tab);
+        });
+        row(aim);
         hint("Controller: plug it in or pair it over Bluetooth, the buttons hide themselves.");
     }
 
@@ -257,6 +266,11 @@ public class ModMenu extends LinearLayout {
             }
         });
         row(enter);
+        if (tier > 0) {
+            hint("VIP:");
+            row(cmd("UNLOCK ALL", "l4unlockall"));
+            hint("Rank 55, every weapon, perk and attachment, Create a Class. Takes effect at the next game.");
+        }
     }
 
     private static String tierName(int tier) {

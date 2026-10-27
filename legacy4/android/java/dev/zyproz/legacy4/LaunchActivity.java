@@ -62,7 +62,7 @@ public class LaunchActivity extends Activity {
 
         String text;
         if (!ready) {
-            text = "LEGACY 4 - version 0.5\n\n"
+            text = "LEGACY 4 - version 0.6\n\n"
                     + "The Call of Duty 4 files are missing. Two ways to get them:\n\n"
                     + "1. STEAM: if your Steam account owns Call of Duty 4 (2007), sign in below. Only the files the"
                     + " game needs are downloaded (about 7 GB, use Wi-Fi). Nothing is saved: no password, no token.\n\n"
@@ -73,7 +73,7 @@ public class LaunchActivity extends Activity {
                     ? "The last start was closed by Android or crashed (no message).\n\nLast lines of journal.txt:\n"
                             + tail(read(journal), 40)
                     : crashText;
-            text = "LEGACY 4 - version 0.5\n\nThe last start stopped:\n\n" + why
+            text = "LEGACY 4 - version 0.6\n\nThe last start stopped:\n\n" + why
                     + "\n\nSend crash.txt and journal.txt from:\n" + media.getAbsolutePath();
         }
 

@@ -162,7 +162,7 @@ edit("crates/client/src/console.rs",
      '    "where",\n];\n',
      '    "where",\n'
      '    // Legacy 4 mod menu (server side: crates/server/src/legacy4.rs).\n'
-     '    "l4save",\n    "l4load",\n    "l4noclip",\n    "l4god",\n    "l4bothere",\n    "l4botfreeze",\n    "l4botmove",\n];\n',
+     '    "l4save",\n    "l4load",\n    "l4noclip",\n    "l4god",\n    "l4bothere",\n    "l4botfreeze",\n    "l4botmove",\n    "l4explosive",\n];\n',
      "trickshot commands sent to the server")
 
 # 8. Server: the trickshot commands themselves.
@@ -204,4 +204,49 @@ edit("crates/client/src/input/mod.rs",
      "            if self.focused && self.cvars.bool(\"in_gamepad\") {\n",
      "            if (self.focused || cfg!(target_os = \"android\")) && self.cvars.bool(\"in_gamepad\") {\n",
      "controller ignores window focus on Android")
+
+# 10. fire.rs: explosive bullets (mod menu, VIP): a small blast where each bullet lands, the shooter spared.
+edit("crates/server/src/fire.rs",
+     "            self.bullet_impact_event(shooter, weapon, &h);\n            if !h.damageable {\n",
+     "            self.bullet_impact_event(shooter, weapon, &h);\n"
+     "            if crate::legacy4::explosive(shooter) {\n"
+     "                let blast = crate::combat::Blast {\n"
+     "                    origin: h.point,\n"
+     "                    radius: 120.0,\n"
+     "                    inner: 150.0,\n"
+     "                    outer: 60.0,\n"
+     "                    attacker: Some(shooter),\n"
+     "                    inflictor: Some(shooter),\n"
+     "                    cone: None,\n"
+     "                    ignore: Some(shooter),\n"
+     "                    skip_clients: false,\n"
+     "                    mean: h.mean,\n"
+     "                    weapon: u32::from(weapon),\n"
+     "                };\n"
+     "                self.blast(vm, &blast);\n"
+     "            }\n"
+     "            if !h.damageable {\n",
+     "explosive bullets")
+
+# 11. shell.rs: UNLOCK ALL (mod menu): the same unlocks the harness profile gets (profile::unlocked_stats): every
+#     weapon, perk and attachment, Create a Class, and the top rank. Stats already set are kept.
+edit("crates/client/src/shell.rs",
+     "                \"statset\" => {\n",
+     "                \"l4unlockall\" => {\n"
+     "                    let all = crate::profile::unlocked_stats();\n"
+     "                    for (i, v) in all.iter().enumerate() {\n"
+     "                        if let Some(s) = self.st.stats.get_mut(i)\n"
+     "                            && *s == 0\n"
+     "                            && *v != 0\n"
+     "                        {\n"
+     "                            *s = *v;\n"
+     "                        }\n"
+     "                    }\n"
+     "                    if let Some(xp) = self.st.stats.get_mut(2301) {\n"
+     "                        *xp = (*xp).max(all[2301]);\n"
+     "                    }\n"
+     "                    self.st.log(\"Everything unlocked (rank, weapons, perks, attachments).\");\n"
+     "                }\n"
+     "                \"statset\" => {\n",
+     "unlock all")
 print("patch_client: all changes applied")
