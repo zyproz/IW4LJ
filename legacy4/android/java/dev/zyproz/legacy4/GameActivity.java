@@ -186,6 +186,21 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
         nativeLook(dx, dy);
     }
 
+    /** 0 free, 1 VIP, 2 admin (Legacy licence key, same keys as Legacy Warfare). */
+    static int tier() {
+        return nativeTier();
+    }
+
+    /** Checks a licence key: the new tier, or -1 if refused. */
+    static int submitKey(String key) {
+        for (int i = 0; i < key.length(); ) {
+            int c = key.codePointAt(i);
+            nativeKeyChar(c);
+            i += Character.charCount(c);
+        }
+        return nativeKeySubmit();
+    }
+
     /** A console line for the game, as if typed at its console. */
     static void command(String line) {
         for (int i = 0; i < line.length(); ) {
@@ -457,4 +472,10 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
     private static native void nativeCommandChar(int c);
 
     private static native void nativeCommandEnd();
+
+    private static native int nativeTier();
+
+    private static native void nativeKeyChar(int c);
+
+    private static native int nativeKeySubmit();
 }

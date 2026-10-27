@@ -149,7 +149,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.4: starting with {args:?}");
+    eprintln!("Legacy 4 0.5: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
@@ -536,5 +536,138 @@ pub fn take_look() -> (f32, f32) {
         let speed = if p.look_speed > 0.0 { p.look_speed } else { 0.15 };
         let (dx, dy) = std::mem::take(&mut p.look);
         (-dx * speed, dy * speed)
+    })
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Player id and licence key: the same system and key format as Legacy Warfare, so the same `mw2keys.sh` issues the
+// keys. Each install makes itself an id (`player-id.txt` in the app folder). A key is
+// `<tier>.<id>.<expiry>.<signature>`: tier `vip` or `admin`, expiry in Unix seconds (0 never ends), and the Ed25519
+// signature in hex of `MW2L1|<tier>|<ID>|<expiry>`, checked with the owner's public key compiled in.
+
+const PUBLIC_KEY_HEX: &str = include_str!("license_pub.hex");
+
+#[derive(Default)]
+struct Licence {
+    loaded: bool,
+    id: String,
+    /// 0 free, 1 VIP, 2 admin.
+    tier: i32,
+    typing: String,
+}
+
+static LICENCE: Mutex<Option<Licence>> = Mutex::new(None);
+
+fn hex_decode(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    if text.len() % 2 != 0 {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(text.get(at..at + 2)?, 16).ok())
+        .collect()
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// The tier a key gives to `id` now, if the key is genuine.
+fn verify_key(token: &str, id: &str) -> Option<i32> {
+    let mut parts = token.trim().split('.');
+    let tier_text = parts.next()?;
+    let key_id = parts.next()?;
+    let expiry: u64 = parts.next()?.parse().ok()?;
+    let signature = hex_decode(parts.next()?)?;
+    if parts.next().is_some() || !key_id.eq_ignore_ascii_case(id) {
+        return None;
+    }
+    let tier = match tier_text {
+        "vip" => 1,
+        "admin" => 2,
+        _ => return None,
+    };
+    if expiry != 0 && unix_now() > expiry {
+        return None;
+    }
+    let public_key = hex_decode(PUBLIC_KEY_HEX)?;
+    let message = format!("MW2L1|{tier_text}|{}|{expiry}", id.to_ascii_uppercase());
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &public_key)
+        .verify(message.as_bytes(), &signature)
+        .ok()?;
+    Some(tier)
+}
+
+fn with_licence<R>(f: impl FnOnce(&mut Licence) -> R) -> R {
+    let mut guard = LICENCE.lock().unwrap_or_else(|e| e.into_inner());
+    let l = guard.get_or_insert_with(Licence::default);
+    if !l.loaded {
+        l.loaded = true;
+        let media = media_dir();
+        let _ = fs::create_dir_all(&media);
+        let id = fs::read_to_string(media.join("player-id.txt"))
+            .ok()
+            .map(|t| t.trim().to_ascii_uppercase())
+            .filter(|t| t.len() == 16 && t.chars().all(|c| c.is_ascii_hexdigit()));
+        l.id = match id {
+            Some(id) => id,
+            None => {
+                let mut bytes = [0u8; 8];
+                let fresh = if ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut bytes).is_ok() {
+                    bytes.iter().map(|b| format!("{b:02X}")).collect::<String>()
+                } else {
+                    "0000000000000000".to_owned()
+                };
+                let _ = fs::write(media.join("player-id.txt"), format!("{fresh}\n"));
+                fresh
+            }
+        };
+        l.tier = fs::read_to_string(media.join("license.key"))
+            .ok()
+            .and_then(|k| verify_key(&k, &l.id))
+            .unwrap_or(0);
+    }
+    f(l)
+}
+
+/// 0 free, 1 VIP, 2 admin. Also makes sure `player-id.txt` exists for the account tab.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeTier(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) -> i32 {
+    with_licence(|l| l.tier)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeKeyChar(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    c: i32,
+) {
+    if let Some(ch) = char::from_u32(c as u32).filter(|c| !c.is_whitespace()) {
+        with_licence(|l| l.typing.push(ch));
+    }
+}
+
+/// Checks the key just typed: kept for next time when genuine. Returns the new tier, or -1 if refused.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeKeySubmit(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) -> i32 {
+    with_licence(|l| {
+        let token = std::mem::take(&mut l.typing);
+        match verify_key(&token, &l.id) {
+            Some(tier) => {
+                let _ = fs::write(media_dir().join("license.key"), format!("{token}\n"));
+                l.tier = tier;
+                tier
+            }
+            None => -1,
+        }
     })
 }

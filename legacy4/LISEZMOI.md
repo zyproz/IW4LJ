@@ -45,3 +45,10 @@ Le module est partagé par toutes les applis Legacy Mobile :
   envoie une ligne de console au jeu.
 - `src/server_legacy4.rs` → `crates/server/src/legacy4.rs` : commandes serveur `l4save`, `l4load` (tout le monde),
   `l4noclip`, `l4god`, `l4bothere`, `l4botfreeze`, `l4botmove` (l'hôte seulement).
+
+## Correctif boutons + VIP (0.5)
+- Boutons tactiles (et manette) muets : le `config_mp.cfg` d'un profil CoD4 commence par `unbindall`, qui effaçait les
+  touches manette. Sur Android, elles sont remises après le profil (`patch_client.py`, étape 9).
+- VIP : même système que Legacy Warfare (`android.rs`, `license_pub.hex`) : `player-id.txt` dans le dossier de
+  l'appli, clé `vip.<ID>.<expiration>.<signature>` créée avec `mw2keys.sh`, à coller dans ACCOUNT.
+  Gratuit : SAVE/LOAD POSITION, BOT HERE. VIP : noclip, god mode, geler/relancer les bots.

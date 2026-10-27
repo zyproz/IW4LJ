@@ -127,12 +127,19 @@ public class ModMenu extends LinearLayout {
         }
     }
 
+    private boolean vip() {
+        return GameActivity.tier() > 0;
+    }
+
     private void trickshot() {
-        hint("Save/load position works for everyone. The rest works for the host of the game.");
-        row(cmd("SAVE POSITION", "l4save"), cmd("LOAD POSITION", "l4load"));
-        row(cmd("BOT HERE", "l4bothere"), cmd("NOCLIP ON/OFF", "l4noclip"));
-        row(cmd("FREEZE BOT", "l4botfreeze"), cmd("MOVE BOT", "l4botmove"));
-        row(cmd("GOD MODE ON/OFF", "l4god"));
+        row(cmd("SAVE POSITION", "l4save"), cmd("LOAD POSITION", "l4load"), cmd("BOT HERE", "l4bothere"));
+        if (vip()) {
+            hint("VIP (works in a game you host):");
+            row(cmd("NOCLIP ON/OFF", "l4noclip"), cmd("GOD MODE ON/OFF", "l4god"));
+            row(cmd("FREEZE BOT", "l4botfreeze"), cmd("MOVE BOT", "l4botmove"));
+        } else {
+            hint("Noclip, god mode, freeze/move bot: VIP only (ACCOUNT tab).");
+        }
         hint("Trickshot game: LAN tab > pick the mode and a map, then add a bot in the BOTS tab.");
     }
 
@@ -140,7 +147,11 @@ public class ModMenu extends LinearLayout {
         hint("Bots work in a game you host (LAN tab, or Start New Server).");
         row(cmd("1 BOT", "bots 1"), cmd("2 BOTS", "bots 2"), cmd("4 BOTS", "bots 4"));
         row(cmd("REMOVE BOTS", "bots 0"));
-        row(cmd("BOT HERE", "l4bothere"), cmd("FREEZE BOT", "l4botfreeze"), cmd("MOVE BOT", "l4botmove"));
+        if (vip()) {
+            row(cmd("BOT HERE", "l4bothere"), cmd("FREEZE BOT", "l4botfreeze"), cmd("MOVE BOT", "l4botmove"));
+        } else {
+            row(cmd("BOT HERE", "l4bothere"));
+        }
     }
 
     private void lan() {
@@ -217,7 +228,57 @@ public class ModMenu extends LinearLayout {
             }
         });
         row(set);
-        hint("VIP and licence keys come in a later version, like Legacy Warfare.");
+
+        int tier = GameActivity.tier();
+        String id = playerId();
+        String grouped = id.length() == 16
+                ? id.substring(0, 4) + "-" + id.substring(4, 8) + "-" + id.substring(8, 12) + "-" + id.substring(12)
+                : id;
+        TextView status = label("Your ID: " + grouped + "    Status: " + tierName(tier), 15, GREEN);
+        status.setTextIsSelectable(true);
+        body.addView(status);
+        if (tier == 0) {
+            hint("Send your ID to ZyProz to get a VIP key, then paste it here.");
+        }
+        EditText key = field("Licence key (vip.XXXX... or admin.XXXX...)", "");
+        body.addView(key);
+        Button enter = button("ENTER LICENCE KEY", false);
+        enter.setOnClickListener(v -> {
+            String k = key.getText().toString().trim();
+            if (k.isEmpty()) {
+                return;
+            }
+            int result = GameActivity.submitKey(k);
+            if (result < 0) {
+                note.setText("Key refused: wrong ID, expired or not genuine.");
+            } else {
+                show(tab);
+                note.setText("Key accepted: " + tierName(result));
+            }
+        });
+        row(enter);
+    }
+
+    private static String tierName(int tier) {
+        return tier == 2 ? "ADMIN" : tier == 1 ? "VIP" : "FREE";
+    }
+
+    /** The id the game wrote in the app folder (Android/media/dev.zyproz.legacy4/player-id.txt). */
+    private String playerId() {
+        for (java.io.File dir : getContext().getExternalMediaDirs()) {
+            if (dir == null) {
+                continue;
+            }
+            try (java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.FileReader(new java.io.File(dir, "player-id.txt")))) {
+                String line = r.readLine();
+                if (line != null) {
+                    return line.trim();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return "(unknown)";
     }
 
     // ---------- pieces ----------

@@ -37,6 +37,8 @@ install = { path = "../install", features = ["prompt"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 libc = "0.2"
+# Legacy licence keys (Ed25519), as in Legacy Warfare; already in the lockfile through rustls.
+ring = "0.17"
 
 # Legacy 4 (Android): Android loads the client as a shared library.
 [lib]
@@ -60,6 +62,7 @@ edit(main,
      "    let args: Vec<String> = std::env::args().skip(1).collect();\n",
      "Android arguments")
 shutil.copy(legacy4 / "src" / "android.rs", "crates/client/src/android.rs")
+shutil.copy(legacy4 / "src" / "license_pub.hex", "crates/client/src/license_pub.hex")
 print("ok  android.rs copied")
 
 # 3. app.rs: the event loop gets the activity, a finger is the mouse, leaving the app stops the game.
@@ -182,4 +185,23 @@ edit("crates/server/src/server.rs",
      '                }\n'
      '            }\n',
      "server trickshot commands")
+
+# 9. input/mod.rs: a profile's config_mp.cfg starts with `unbindall` (the stock ones do), which wiped the controller
+#    binds the touch buttons and the pad use. On Android they come back after the profile, unless the player bound
+#    that button to something else. And a controller works whatever the window focus says.
+edit("crates/client/src/input/mod.rs",
+     "        self.config_path = save;\n        self.dirty = false;\n    }\n",
+     "        #[cfg(target_os = \"android\")]\n"
+     "        for line in include_str!(\"extra_binds.cfg\").lines().filter(|l| l.starts_with(\"bind pad_\")) {\n"
+     "            let key = line.split_whitespace().nth(1).unwrap_or(\"\");\n"
+     "            if !self.binds.contains_key(key) {\n"
+     "                self.exec_line(line);\n"
+     "            }\n"
+     "        }\n"
+     "        self.config_path = save;\n        self.dirty = false;\n    }\n",
+     "controller binds back after the profile")
+edit("crates/client/src/input/mod.rs",
+     "            if self.focused && self.cvars.bool(\"in_gamepad\") {\n",
+     "            if (self.focused || cfg!(target_os = \"android\")) && self.cvars.bool(\"in_gamepad\") {\n",
+     "controller ignores window focus on Android")
 print("patch_client: all changes applied")
