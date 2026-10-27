@@ -191,9 +191,11 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             pad.invalidate();
         }
         // The controller's turn speed: the game's own gamepad rates, in degrees per second at full stick.
-        int level = prefs.getInt("stick_sens", 5);
+        int level = prefs.getInt("stick_sens", 8);
         int yaw = ModMenu.stickYaw(level);
-        command("seta in_gamepad_yawrate " + yaw + "; seta in_gamepad_pitchrate " + (yaw * 7 / 10));
+        float ads = prefs.getInt("ads_sens", 6) / 10f;
+        command("seta in_gamepad_yawrate " + yaw + "; seta in_gamepad_pitchrate " + (yaw * 7 / 10)
+                + "; seta l4_ads_sens " + ads);
     }
 
     /** A controller is in use: the touch buttons hide until the screen is touched again. */

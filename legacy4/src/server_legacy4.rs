@@ -49,7 +49,7 @@ fn toggle(list: &Mutex<Vec<u16>>, slot: u16) -> bool {
 
 impl Game {
     /// Carries out one Legacy 4 command for client `slot`; returns what to tell the player.
-    pub fn legacy4_command(&mut self, slot: u16, verb: &str, host: bool) -> String {
+    pub fn legacy4_command(&mut self, slot: u16, verb: &str, host: bool, args: &[String]) -> String {
         let Some(me) = self.client(slot) else {
             return String::new();
         };
@@ -104,29 +104,34 @@ impl Game {
                 }
             }
             "l4unlock" => {
-                // UNLOCK ALL from inside a game: the server keeps its own copy of the player's stats from map to map
-                // and sends it back, so unlocking only in the client's profile was undone. Set here like the
-                // scripts' `setStat`, each change is also sent to the client, which saves it in the profile.
+                // UNLOCK ALL from inside a game. The server keeps its own copy of the player's stats from map to map
+                // and sends it back, so unlocking only in the client's profile was undone. The client works out
+                // the stats from the game's own table (mp/statstable.csv) and sends them here as `index value`
+                // pairs; each one is set like the scripts' `setStat` and sent back to the client's profile.
+                let pairs: Vec<(i32, i32)> = args
+                    .get(1..)
+                    .unwrap_or_default()
+                    .chunks_exact(2)
+                    .filter_map(|p| Some((p[0].parse().ok()?, p[1].parse().ok()?)))
+                    .filter(|(i, _)| (0..4000).contains(i))
+                    .collect();
                 let mut changed = 0;
-                let wanted = (101..=200)
-                    .chain([210, 220, 230, 240, 257, 258, 260])
-                    .chain(270..=279)
-                    .map(|i| (i, 1))
-                    .chain([(2301, 1_000_000)]);
-                for (i, v) in wanted {
+                for (i, v) in pairs {
                     let Some(c) = self.client_mut(slot) else { break };
-                    let old = c.stats.get(&i).copied().unwrap_or(0);
-                    let new = if i == 2301 { old.max(v) } else if old == 0 { v } else { old };
-                    if new != old {
-                        c.stats.insert(i, new);
+                    if c.stats.get(&i).copied().unwrap_or(0) != v {
+                        c.stats.insert(i, v);
                         self.send(
                             crate::ui::Dest::Client(slot),
-                            net::ui::ServerCmd::Stat { index: i, value: new },
+                            net::ui::ServerCmd::Stat { index: i, value: v },
                         );
                         changed += 1;
                     }
                 }
-                format!("Everything unlocked ({changed} stats). Rank and unlocks show from the next map.")
+                if changed == 0 {
+                    String::new()
+                } else {
+                    format!("Unlocked ({changed} stats): it shows from the next map.")
+                }
             }
             "l4explosive" => format!(
                 "Explosive bullets {}",
@@ -165,8 +170,29 @@ use crate::client::Team;
 use sim::pm::PmType;
 
 /// How much of the time before the kill the replay shows, and after it.
-const BEFORE_MS: i32 = 3500;
-const AFTER_MS: i32 = 1500;
+const BEFORE_MS: i32 = 4000;
+const AFTER_MS: i32 = 2000;
+/// The slow motion: the replay from `SLOW_FROM` before the kill to `SLOW_TO` after it runs at `SLOW` of real speed.
+const SLOW_FROM: i32 = 1000;
+const SLOW_TO: i32 = 1000;
+const SLOW: f32 = 0.35;
+
+/// Where the replay is (milliseconds from the kill, negative before it) `t` ms after it began, and its full length.
+fn replay_at(t: i32) -> i32 {
+    let normal_a = BEFORE_MS - SLOW_FROM;
+    let slow_len = ((SLOW_FROM + SLOW_TO) as f32 / SLOW) as i32;
+    if t <= normal_a {
+        -BEFORE_MS + t
+    } else if t <= normal_a + slow_len {
+        -SLOW_FROM + ((t - normal_a) as f32 * SLOW) as i32
+    } else {
+        (SLOW_TO + (t - normal_a - slow_len)).min(AFTER_MS)
+    }
+}
+
+fn replay_length() -> i32 {
+    (BEFORE_MS - SLOW_FROM) + ((SLOW_FROM + SLOW_TO) as f32 / SLOW) as i32 + (AFTER_MS - SLOW_TO)
+}
 /// A final killcam that has not started this long after its kill is dropped (a level that never moved on).
 const GIVE_UP_MS: i32 = 12_000;
 
@@ -257,7 +283,7 @@ impl Game {
         let start = match f.started {
             Some(s) => s,
             None => {
-                if now < f.kill_time + AFTER_MS {
+                if now < f.kill_time + 1500 {
                     return; // the moment after the kill plays out live first
                 }
                 f.saved = self
@@ -285,7 +311,7 @@ impl Game {
                 now
             }
         };
-        if now >= start + BEFORE_MS + AFTER_MS + 300 {
+        if now >= start + replay_length() + 300 {
             // Over: everyone gets their own view back, and the round may move on.
             for s in std::mem::take(&mut f.saved) {
                 if let Some(c) = self.client_mut(s.slot) {
@@ -299,8 +325,9 @@ impl Game {
             *guard = None;
             return;
         }
-        // The replay: the frame `archive` ago, from `BEFORE_MS` before the kill, moving forward in step with time.
-        let archive_ms = (start - (f.kill_time - BEFORE_MS)).min(span_ms - 50).max(0);
+        // The replay: the archived frame `archive` ago. It moves forward in step with time, slower around the kill.
+        let at = f.kill_time + replay_at(now - start);
+        let archive_ms = (now - at).min(span_ms - 50).max(0);
         let (attacker, offset) = (f.attacker, f.offset_ms);
         let slots: Vec<u16> = f.saved.iter().map(|s| s.slot).collect();
         drop(guard);

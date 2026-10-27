@@ -98,3 +98,17 @@ que rejoue la killcam normale (`archive.rs`, 15 s) :
   revient comme avant.
 - La manche suivante (`map_restart`) et la fin du match (`exit_requested`) attendent la fin de la killcam finale.
 - `netsv.rs` : un joueur peut se suivre lui-même pendant un replay (le tueur revoit son tir).
+
+## 0.13
+- UNLOCK ALL : les déblocages sont pris dans la table du jeu (`mp/statstable.csv`, colonne 1 = stat de l'objet) :
+  atouts et objets (150..298, bit 0), armes (3000 et plus : bit 0 et tous les bits d'accessoires), plus Create a Class,
+  emplacements de classe et rang max. Le client envoie la même liste au serveur (`l4unlock index valeur ...`).
+  `journal.txt` : « legacy4: unlock all from mp/statstable.csv » avec les nombres trouvés.
+- Killcam finale : 4 s avant le kill, 2 s après, et ralenti (x0,35) de 1 s avant à 1 s après le kill (environ 9,7 s).
+- Wallbangs : les fusils de précision (classe rifle, pénétration large) traversent 8 fois plus, et même un peu ce que
+  la table rend impénétrable (étape 19, `bullet.rs`).
+- Double Y rapide : un second appui arrivé avant que le serveur commence le changement est gardé et devient
+  l'annulation dès que l'arme descend (étape 18).
+- Manette : sensibilité 1 à 20 (8 par défaut, 560 °/s ; 20 = 1260 °/s) ; en visée, le stick ralentit avec le zoom
+  comme la souris, fois le réglage « AIM » de CONTROLS (`l4_ads_sens`, 60 % par défaut).
+- Tactile : second bouton FIRE à gauche, sous l'ancienne mini-carte.

@@ -24,6 +24,8 @@ public class TouchPad extends View {
         final String label;
         final int key;
         final boolean bottom;
+        /** Measured from the left edge instead of the right. */
+        boolean left;
         final float x, y, r;
         final boolean accent;
         boolean down;
@@ -47,6 +49,7 @@ public class TouchPad extends View {
 
     final Btn[] buttons = {
             new Btn("FIRE", FIRE, true, 34, 25, 11, true),
+            leftSide(new Btn("FIRE", FIRE, false, 13, 30, 8, true)),
             new Btn("AIM", AIM, true, 34, 50, 5.8f, false),
             new Btn("JUMP", JUMP, true, 12, 38, 6.8f, false),
             new Btn("CROUCH", CROUCH, true, 12, 12, 6.2f, false),
@@ -62,6 +65,12 @@ public class TouchPad extends View {
             new Btn("SCORE", SCORE, false, 62, 7, 4.3f, false),
             new Btn("PAUSE", PAUSE, false, 73, 7, 4.3f, false),
     };
+
+    /** A second FIRE on the left, under the left thumb's reach: shoot while the right thumb aims. */
+    private static Btn leftSide(Btn b) {
+        b.left = true;
+        return b;
+    }
 
     interface Listener {
         void openMods();
@@ -105,7 +114,8 @@ public class TouchPad extends View {
     }
 
     private float cx(Btn b) {
-        return getWidth() - b.x * unit() * (b.bottom ? scale : 1f);
+        float d = b.x * unit() * (b.bottom ? scale : 1f);
+        return b.left ? d : getWidth() - d;
     }
 
     private float cy(Btn b) {

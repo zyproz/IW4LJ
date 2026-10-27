@@ -212,10 +212,14 @@ public class ModMenu extends LinearLayout {
                 setting("BUTTONS BRIGHTER", "opacity", Math.min(1f, opacity + 0.1f)));
         row(setting("BUTTONS SMALLER", "size", Math.max(0.7f, size - 0.1f)),
                 setting("BUTTONS BIGGER", "size", Math.min(1.4f, size + 0.1f)));
-        int stick = prefs.getInt("stick_sens", 5);
-        hint("Controller turn speed: " + stick + " / 10   (" + stickYaw(stick) + " degrees per second)");
+        int stick = prefs.getInt("stick_sens", 8);
+        hint("Controller turn speed: " + stick + " / 20   (" + stickYaw(stick) + " degrees per second)");
         row(intSetting("STICK SLOWER", "stick_sens", Math.max(1, stick - 1)),
-                intSetting("STICK FASTER", "stick_sens", Math.min(10, stick + 1)));
+                intSetting("STICK FASTER", "stick_sens", Math.min(20, stick + 1)));
+        int ads = prefs.getInt("ads_sens", 6);
+        hint("Controller speed while aiming down the sights: " + ads * 10 + "%  (on top of the zoom's own slowdown)");
+        row(intSetting("AIM SLOWER", "ads_sens", Math.max(1, ads - 1)),
+                intSetting("AIM FASTER", "ads_sens", Math.min(15, ads + 1)));
         boolean toggle = prefs.getBoolean("aim_toggle", true);
         Button aim = button(toggle ? "AIM: TAP TO SWITCH (ON)" : "AIM: HOLD (ON)", false);
         aim.setOnClickListener(v -> {
@@ -272,7 +276,7 @@ public class ModMenu extends LinearLayout {
         row(enter);
         if (tier > 0) {
             hint("VIP:");
-            row(cmd("UNLOCK ALL", "l4unlockall; l4unlock"));
+            row(cmd("UNLOCK ALL", "l4unlockall"));
             hint("Rank 55, every weapon, perk and attachment, Create a Class. Best used in a game:"
                     + " it shows from the next map.");
         }
@@ -336,7 +340,7 @@ public class ModMenu extends LinearLayout {
             prefs.edit().putInt(key, value).apply();
             host.controlsChanged();
             show(tab);
-            note.setText(text + ": " + value + " / 10");
+            note.setText(text + ": " + value);
         });
         return b;
     }
@@ -422,9 +426,9 @@ public class ModMenu extends LinearLayout {
         focusFirst();
     }
 
-    /** Degrees per second at full stick for sensitivity 1..10. */
+    /** Degrees per second at full stick for sensitivity 1..20 (8 = 560, 20 = 1260). */
     static int stickYaw(int level) {
-        return 80 + 40 * Math.max(1, Math.min(10, level));
+        return 60 + 60 * Math.max(1, Math.min(20, level));
     }
 
     private int dp(int v) {

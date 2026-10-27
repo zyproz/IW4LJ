@@ -149,6 +149,16 @@ edit(app,
 # 6. input/mod.rs: the touch screen's look drag turns the view like a mouse.
 edit("crates/client/src/input/mod.rs",
      "        yaw += pad_yaw;\n        pitch += pad_pitch;\n",
+     "        // Legacy 4: aiming down the sights slows the stick as it slows the mouse (the zoom's own scale), times\n"
+     "        // the player's ADS setting (`l4_ads_sens`, mod menu CONTROLS).\n"
+     "        #[cfg(target_os = \"android\")]\n"
+     "        let (pad_yaw, pad_pitch) = if self.fov_sensitivity_scale < 0.999 {\n"
+     "            let mine = cv.f32(\"l4_ads_sens\");\n"
+     "            let k = self.fov_sensitivity_scale * if mine > 0.0 { mine } else { 1.0 };\n"
+     "            (pad_yaw * k, pad_pitch * k)\n"
+     "        } else {\n"
+     "            (pad_yaw, pad_pitch)\n"
+     "        };\n"
      "        yaw += pad_yaw;\n        pitch += pad_pitch;\n"
      "        #[cfg(target_os = \"android\")]\n"
      "        {\n"
@@ -174,7 +184,7 @@ edit("crates/server/src/server.rs",
      '            Some("where") => self.game.where_am_i(slot),\n'
      '            // Legacy 4 mod menu: save/load for everyone, the rest for the host (loopback).\n'
      '            Some(v) if v.starts_with("l4") => {\n'
-     '                let text = self.game.legacy4_command(slot, v, loopback);\n'
+     '                let text = self.game.legacy4_command(slot, v, loopback, &argv);\n'
      '                if !text.is_empty() {\n'
      '                    self.game.send(\n'
      '                        Dest::Client(slot),\n'
@@ -229,24 +239,64 @@ edit("crates/server/src/fire.rs",
      "            if !h.damageable {\n",
      "explosive bullets")
 
-# 11. shell.rs: UNLOCK ALL (mod menu): the same unlocks the harness profile gets (profile::unlocked_stats): every
-#     weapon, perk and attachment, Create a Class, and the top rank. Stats already set are kept.
+# 11. shell.rs: UNLOCK ALL (mod menu). The unlocks are where the game's own table says: every item of
+#     mp/statstable.csv (column 1 = its stat): perks and items (150..298, bit 0 = unlocked), weapons (3000 and up:
+#     bit 0 and every attachment bit), plus Create a Class and the class slots (profile::unlocked_stats) and the top
+#     rank. The same stats go to the server of the game (`l4unlock`), whose own copy would undo them otherwise.
 edit("crates/client/src/shell.rs",
      "                \"statset\" => {\n",
      "                \"l4unlockall\" => {\n"
-     "                    let all = crate::profile::unlocked_stats();\n"
-     "                    for (i, v) in all.iter().enumerate() {\n"
-     "                        if let Some(s) = self.st.stats.get_mut(i)\n"
-     "                            && *s == 0\n"
-     "                            && *v != 0\n"
-     "                        {\n"
-     "                            *s = *v;\n"
+     "                    let mut wanted: Vec<(usize, i32)> = crate::profile::unlocked_stats()\n"
+     "                        .iter()\n"
+     "                        .enumerate()\n"
+     "                        .filter(|(i, v)| **v != 0 && *i != 2301)\n"
+     "                        .map(|(i, v)| (i, *v))\n"
+     "                        .collect();\n"
+     "                    let (mut items, mut weapons, mut other) = (0, 0, Vec::new());\n"
+     "                    if let Some(t) = ui.assets.table(\"mp/statstable.csv\") {\n"
+     "                        let cols = t.column_count as usize;\n"
+     "                        for r in 0..t.row_count as usize {\n"
+     "                            let cell = |c: usize| {\n"
+     "                                t.values.get(r * cols + c).and_then(|v| v.as_deref()).unwrap_or(\"\")\n"
+     "                            };\n"
+     "                            let Ok(stat) = cell(1).trim().parse::<usize>() else { continue };\n"
+     "                            match stat {\n"
+     "                                150..=199 | 250..=298 => {\n"
+     "                                    wanted.push((stat, 1));\n"
+     "                                    items += 1;\n"
+     "                                }\n"
+     "                                3000..=3999 => {\n"
+     "                                    wanted.push((stat, 0x7fff));\n"
+     "                                    weapons += 1;\n"
+     "                                }\n"
+     "                                _ => other.push(stat),\n"
+     "                            }\n"
+     "                        }\n"
+     "                    }\n"
+     "                    tracing::info!(items, weapons, ?other, \"legacy4: unlock all from mp/statstable.csv\");\n"
+     "                    let mut pairs = Vec::new();\n"
+     "                    for (i, v) in wanted {\n"
+     "                        if let Some(s) = self.st.stats.get_mut(i) {\n"
+     "                            let new = if i >= 2000 {\n"
+     "                                *s | v\n"
+     "                            } else if *s & 3 == 0 {\n"
+     "                                (*s).max(v)\n"
+     "                            } else {\n"
+     "                                *s\n"
+     "                            };\n"
+     "                            *s = new;\n"
+     "                            pairs.push((i, new));\n"
      "                        }\n"
      "                    }\n"
      "                    if let Some(xp) = self.st.stats.get_mut(2301) {\n"
-     "                        *xp = (*xp).max(all[2301]);\n"
+     "                        *xp = (*xp).max(1_000_000);\n"
+     "                        pairs.push((2301, *xp));\n"
      "                    }\n"
-     "                    self.st.log(\"Everything unlocked (rank, weapons, perks, attachments).\");\n"
+     "                    for chunk in pairs.chunks(20) {\n"
+     "                        let list: Vec<String> = chunk.iter().map(|(i, v)| format!(\"{i} {v}\")).collect();\n"
+     "                        self.st.actions.push(Action::Console(format!(\"l4unlock {}\", list.join(\" \"))));\n"
+     "                    }\n"
+     "                    self.st.log(&format!(\"Unlocked {items} items and {weapons} weapons, top rank.\"));\n"
      "                }\n"
      "                \"statset\" => {\n",
      "unlock all")
@@ -377,4 +427,63 @@ edit("crates/server/src/netsv.rs",
      ".filter(|t| *t != slot && c.session == Session::Spectator);",
      ".filter(|t| (*t != slot || c.archive_time > 0.0) && c.session == Session::Spectator);",
      "final killcam: the killer watches himself")
+
+# 18. netplay.rs: double weapnext at once (faster than the server answers): the first press asks for the other
+#     weapon; the second comes before the drop has begun, so it is kept and turned into the cancel as soon as the
+#     server starts the drop.
+edit("crates/client/src/netplay.rs",
+     "        let inv = PlayerWeapons::from_words(&snap.inv);\n"
+     "        let cur = self.selected_weapon(&inv, ps);\n"
+     "        if let Some(w) = inv.cycle_primary(&self.weapons, cur, self.latest_primary, forward, false)\n"
+     "        {\n"
+     "            self.select_weapon(w);\n"
+     "        }\n",
+     "        let held = ps.weapon as u16;\n"
+     "        let dropping = matches!(\n"
+     "            ps.weapon_state,\n"
+     "            sim::pm::weapon_state::DROPPING | sim::pm::weapon_state::DROPPING_QUICK\n"
+     "        );\n"
+     "        let inv = PlayerWeapons::from_words(&snap.inv);\n"
+     "        let cur = self.selected_weapon(&inv, ps);\n"
+     "        if let Some(w) = inv.cycle_primary(&self.weapons, cur, self.latest_primary, forward, false)\n"
+     "        {\n"
+     "            if w == held && self.want_weapon.is_some_and(|x| x != held) && !dropping {\n"
+     "                L4_SWITCH_CANCEL.store(true, std::sync::atomic::Ordering::Relaxed);\n"
+     "            } else {\n"
+     "                L4_SWITCH_CANCEL.store(false, std::sync::atomic::Ordering::Relaxed);\n"
+     "                self.select_weapon(w);\n"
+     "            }\n"
+     "        }\n",
+     "double weapnext: remember the cancel")
+edit("crates/client/src/netplay.rs",
+     "        // A weapon the player asked for is asked for until it is held; after that the scripts decide.\n",
+     "        if L4_SWITCH_CANCEL.load(std::sync::atomic::Ordering::Relaxed) {\n"
+     "            if self.want_weapon.is_none() {\n"
+     "                L4_SWITCH_CANCEL.store(false, std::sync::atomic::Ordering::Relaxed);\n"
+     "            } else if matches!(\n"
+     "                snap.ps.weapon_state,\n"
+     "                sim::pm::weapon_state::DROPPING | sim::pm::weapon_state::DROPPING_QUICK\n"
+     "            ) {\n"
+     "                L4_SWITCH_CANCEL.store(false, std::sync::atomic::Ordering::Relaxed);\n"
+     "                self.want_weapon = Some(snap.ps.weapon as u16);\n"
+     "            }\n"
+     "        }\n"
+     "        // A weapon the player asked for is asked for until it is held; after that the scripts decide.\n",
+     "double weapnext: cancel once the drop begins")
+with open("crates/client/src/netplay.rs", "a") as f:
+    f.write("\n/// Legacy 4: a second weapnext came before the server began the switch; it cancels it once the drop starts.\n"
+            "static L4_SWITCH_CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n")
+print("ok  double weapnext flag")
+
+# 19. bullet.rs: sniper wallbangs everywhere (trickshots): sniper rifles (rifle class, large penetration) go through
+#     8 times the thickness, and through some of what the table makes solid.
+edit("crates/server/src/bullet.rs",
+     "        let depth_of = |surface: usize| p.penetration.depth_for(p.info, surface, p.perks, p.params);\n",
+     "        let sniper = p.info.penetrate_type == PenetrateType::Large\n"
+     "            && p.info.weap_class == sim::weapon::WeaponClass::Rifle;\n"
+     "        let depth_of = |surface: usize| {\n"
+     "            let d = p.penetration.depth_for(p.info, surface, p.perks, p.params);\n"
+     "            if sniper { (d * 8.0).max(48.0) } else { d }\n"
+     "        };\n",
+     "sniper wallbangs")
 print("patch_client: all changes applied")
