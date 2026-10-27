@@ -1,0 +1,139 @@
+# Legacy 4 (CoD4 sur Android), version 0.1 : compile le moteur open source jeiang/cod4-decomp (GPL-3.0)
+# pour Android, ajoute l'entrée Android de legacy4/ et assemble un APK signé.
+# Lancer : gh workflow run legacy4-android.yml -R zyproz/IW4LJ
+# Résultat : artifact "Legacy4-0.1" (l'APK, plus build.log si ça échoue).
+
+name: Legacy 4 - APK Android
+
+on:
+  workflow_dispatch:
+
+env:
+  # Version précise du moteur : le dépôt d'origine change tous les jours, on avance quand on le décide.
+  COD4_COMMIT: 76ee7636db6e051c39ce910c3da147e3cadcf28a
+  NDK_VERSION: 28.2.13676358
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: jeiang/cod4-decomp
+          ref: ${{ env.COD4_COMMIT }}
+          path: cod4
+
+      - name: Libérer de la place disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Paquets système
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config zip
+
+      - name: SDK et NDK Android
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;$NDK_VERSION"
+
+      - name: Rust (version choisie par le moteur) et cible Android
+        working-directory: cod4
+        run: |
+          rustup show
+          rustup target add aarch64-linux-android
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "cod4 -> target"
+          key: legacy4
+
+      - name: Adapter le client pour Android (legacy4/patch_client.py)
+        working-directory: cod4
+        run: |
+          python3 ../legacy4/patch_client.py ../legacy4
+          git diff --stat
+
+      - name: Compiler la bibliothèque du jeu
+        working-directory: cod4
+        run: |
+          NDK="$ANDROID_HOME/ndk/$NDK_VERSION"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$BIN/aarch64-linux-android31-clang"
+          export CXX_aarch64_linux_android="$BIN/aarch64-linux-android31-clang++"
+          export AR_aarch64_linux_android="$BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android31-clang"
+          set -o pipefail
+          cargo build -p client --lib --release --target aarch64-linux-android --message-format short 2>&1 | tee ../build.log
+          ls -l target/aarch64-linux-android/release/libcod4e_android.so
+
+      - name: Clé de signature (réutilisée d'un build à l'autre)
+        uses: actions/cache@v4
+        with:
+          path: ks
+          key: legacy4-keystore-v1
+
+      - name: Assembler et signer l'APK
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_HOME/ndk/$NDK_VERSION"
+          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          BT="$ANDROID_HOME/build-tools/34.0.0"
+          JAR="$ANDROID_HOME/platforms/android-34/android.jar"
+          L="legacy4"
+          SO="cod4/target/aarch64-linux-android/release/libcod4e_android.so"
+          B="$PWD/build"
+          mkdir -p "$B/classes" "$B/dex" "$B/stage/lib/arm64-v8a" ks
+
+          javac -source 17 -target 17 -classpath "$JAR" -d "$B/classes" \
+            "$L"/android/java/dev/zyproz/legacy4/*.java
+          jar cf "$B/classes.jar" -C "$B/classes" .
+          "$BT/d8" --lib "$JAR" --min-api 31 --output "$B/dex" "$B/classes.jar"
+
+          "$BT/aapt2" compile --dir "$L/res" -o "$B/res.zip"
+          "$BT/aapt2" link -o "$B/base.apk" -I "$JAR" \
+            --manifest "$L/android/AndroidManifest.xml" \
+            --min-sdk-version 31 --target-sdk-version 34 "$B/res.zip"
+
+          "$BIN/llvm-strip" --strip-all -o "$B/stage/lib/arm64-v8a/libcod4e_android.so" "$SO"
+          cp "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
+            "$B/stage/lib/arm64-v8a/"
+          cp "$B/dex/classes.dex" "$B/stage/"
+          (cd "$B/stage" && zip -0 -r ../base.apk classes.dex lib)
+          "$BT/zipalign" -p -f 4 "$B/base.apk" "$B/aligned.apk"
+
+          if [ ! -f ks/legacy4.keystore ]; then
+            keytool -genkeypair -keystore ks/legacy4.keystore -alias legacy4 \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass legacy4-ci-pass -keypass legacy4-ci-pass -dname "CN=Legacy 4 CI"
+          fi
+          VER=$(grep -o 'android:versionName="[^"]*"' "$L/android/AndroidManifest.xml" | head -1 | cut -d'"' -f2)
+          OUT="$B/Legacy4-$VER.apk"
+          "$BT/apksigner" sign --ks ks/legacy4.keystore --ks-pass pass:legacy4-ci-pass \
+            --ks-key-alias legacy4 --key-pass pass:legacy4-ci-pass \
+            --out "$OUT" "$B/aligned.apk"
+          "$BT/apksigner" verify "$OUT"
+          ls -l "$OUT"
+
+      - name: Résumé des erreurs
+        if: failure()
+        run: |
+          grep -E "^(error|.*: error)" build.log | sort | uniq -c | sort -rn | head -30 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Legacy4-0.1
+          path: |
+            build/Legacy4-*.apk
+            build.log
+          if-no-files-found: warn
