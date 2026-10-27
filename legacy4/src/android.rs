@@ -149,7 +149,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.3: starting with {args:?}");
+    eprintln!("Legacy 4 0.4: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
@@ -197,6 +197,15 @@ struct PadShared {
     /// The last menu move came from the stick (A clicks) rather than the D-pad (A selects).
     stick_last: bool,
     last_poll: Option<Instant>,
+    /// The touch screen's move stick, -1..1 with +Y forward.
+    touch_stick: (f32, f32),
+    /// Look drag from the touch screen, in pixels, not yet given to the game.
+    look: (f32, f32),
+    /// Degrees of turn per pixel dragged.
+    look_speed: f32,
+    /// Console lines from the mod menu, and the one being received.
+    commands: Vec<String>,
+    typing: String,
 }
 
 static PAD: Mutex<Option<PadShared>> = Mutex::new(None);
@@ -236,6 +245,9 @@ fn pad_key(code: i32) -> Option<&'static str> {
         20 => "pad_dpad_down",
         21 => "pad_dpad_left",
         22 => "pad_dpad_right",
+        // The touch screen's FIRE and AIM: the triggers' binds.
+        104 => "pad_lt",
+        105 => "pad_rt",
         _ => return None,
     })
 }
@@ -363,7 +375,13 @@ pub fn pad_poll() -> ((f32, f32), (f32, f32), Vec<(&'static str, bool)>) {
         if p.menu_open {
             ((0.0, 0.0), (0.0, 0.0), edges)
         } else {
-            (p.left, p.right, edges)
+            // The touch stick and a controller's stick: whichever is pushed further.
+            let left = if p.touch_stick.0.hypot(p.touch_stick.1) > p.left.0.hypot(p.left.1) {
+                p.touch_stick
+            } else {
+                p.left
+            };
+            (left, p.right, edges)
         }
     })
 }
@@ -436,5 +454,87 @@ pub fn menu_frame(open: bool, width: f32, height: f32) -> Vec<MenuAct> {
             out.push(MenuAct::Key(key));
         }
         out
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeStick(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    x: f32,
+    y: f32,
+) {
+    with_pad(|p| p.touch_stick = (x.clamp(-1.0, 1.0), y.clamp(-1.0, 1.0)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeLook(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    dx: f32,
+    dy: f32,
+) {
+    with_pad(|p| {
+        if !p.menu_open {
+            p.look.0 += dx;
+            p.look.1 += dy;
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeLookSpeed(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    degrees_per_pixel: f32,
+) {
+    with_pad(|p| p.look_speed = degrees_per_pixel.clamp(0.01, 2.0));
+}
+
+/// Whether one of the game's own menus has the input (the touch screen is then its mouse).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeMenuOpen(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) -> u8 {
+    with_pad(|p| u8::from(p.menu_open))
+}
+
+/// A console line from the mod menu, one character at a time (no JNI string handling needed).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeCommandChar(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    c: i32,
+) {
+    if let Some(ch) = char::from_u32(c as u32) {
+        with_pad(|p| p.typing.push(ch));
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeCommandEnd(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) {
+    with_pad(|p| {
+        let line = std::mem::take(&mut p.typing);
+        if !line.trim().is_empty() {
+            p.commands.push(line);
+        }
+    });
+}
+
+/// The mod menu's console lines, run by the client as if typed at its console.
+pub fn take_commands() -> Vec<String> {
+    with_pad(|p| std::mem::take(&mut p.commands))
+}
+
+/// The touch look since the last frame, as (yaw, pitch) degrees to add.
+pub fn take_look() -> (f32, f32) {
+    with_pad(|p| {
+        let speed = if p.look_speed > 0.0 { p.look_speed } else { 0.15 };
+        let (dx, dy) = std::mem::take(&mut p.look);
+        (-dx * speed, dy * speed)
     })
 }

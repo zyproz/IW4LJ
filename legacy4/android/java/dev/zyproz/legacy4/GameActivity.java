@@ -2,6 +2,12 @@ package dev.zyproz.legacy4;
 
 import android.app.NativeActivity;
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.PixelFormat;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Gravity;
+import android.widget.FrameLayout;
 import android.hardware.input.InputManager;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
@@ -26,6 +32,12 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
     }
 
     private WifiManager.MulticastLock broadcastLock;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private FrameLayout overlay;
+    private TouchPad pad;
+    private ModMenu mods;
+    private WindowManager.LayoutParams overlayParams;
+    private boolean lastMenu;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,10 +59,161 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
         } catch (RuntimeException ignored) {
         }
         hideBars();
+        applyControls();
+        // The touch controls live in a window of their own over the game: the game's window is all its surface.
+        getWindow().getDecorView().post(this::addOverlay);
+    }
+
+    private void addOverlay() {
+        if (overlay != null || getWindow().getDecorView().getWindowToken() == null) {
+            if (overlay == null) {
+                handler.postDelayed(this::addOverlay, 200);
+            }
+            return;
+        }
+        overlay = new FrameLayout(this);
+        pad = new TouchPad(this, this::openMods);
+        overlay.addView(pad, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        mods = new ModMenu(this, new ModMenu.Host() {
+            @Override
+            public void closeMods() {
+                GameActivity.this.closeMods();
+            }
+
+            @Override
+            public void controlsChanged() {
+                applyControls();
+            }
+        });
+        int w = (int) (getResources().getDisplayMetrics().widthPixels * 0.86f);
+        int h = (int) (getResources().getDisplayMetrics().heightPixels * 0.9f);
+        overlay.addView(mods, new FrameLayout.LayoutParams(w, h, Gravity.CENTER));
+        mods.setVisibility(View.GONE);
+        overlayParams = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+        overlayParams.token = getWindow().getDecorView().getWindowToken();
+        overlayParams.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        try {
+            getWindowManager().addView(overlay, overlayParams);
+        } catch (RuntimeException e) {
+            overlay = null;
+            return;
+        }
+        applyControls();
+        handler.post(this::watchMenu);
+    }
+
+    /** Follows whether one of the game's menus is up: the buttons step aside and a finger becomes the mouse. */
+    private void watchMenu() {
+        if (pad == null) {
+            return;
+        }
+        boolean menu = nativeMenuOpen();
+        if (menu != lastMenu) {
+            lastMenu = menu;
+            pad.releaseAll();
+            pad.gameMenu = menu;
+            pad.invalidate();
+        }
+        handler.postDelayed(this::watchMenu, 120);
+    }
+
+    private void openMods() {
+        if (mods == null) {
+            return;
+        }
+        pad.releaseAll();
+        pad.setVisibility(View.GONE);
+        mods.setVisibility(View.VISIBLE);
+        // Typing an address or a name needs the keyboard: the overlay takes the focus while the menu is open.
+        overlayParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        getWindowManager().updateViewLayout(overlay, overlayParams);
+    }
+
+    private void closeMods() {
+        if (mods == null) {
+            return;
+        }
+        mods.setVisibility(View.GONE);
+        pad.setVisibility(View.VISIBLE);
+        overlayParams.flags |= WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        getWindowManager().updateViewLayout(overlay, overlayParams);
+        hideBars();
+    }
+
+    private void applyControls() {
+        SharedPreferences prefs = getSharedPreferences("legacy4", MODE_PRIVATE);
+        nativeLookSpeed(prefs.getFloat("look_speed", 0.15f));
+        if (pad != null) {
+            pad.opacity = prefs.getFloat("opacity", 0.55f);
+            pad.scale = prefs.getFloat("size", 1f);
+            pad.invalidate();
+        }
+    }
+
+    /** A controller is in use: the touch buttons hide until the screen is touched again. */
+    private void controllerUsed() {
+        if (pad != null && !pad.padActive) {
+            pad.releaseAll();
+            pad.padActive = true;
+            pad.invalidate();
+        }
+    }
+
+    // ---- Calls from the touch controls and the mod menu ----
+
+    static void pressButton(int key, boolean down) {
+        nativePadButton(-1, key, down);
+    }
+
+    static void touchMouse(int id, int phase, float x, float y) {
+        nativeTouch(id, phase, x, y);
+    }
+
+    static void stick(float x, float y) {
+        nativeStick(x, y);
+    }
+
+    static void look(float dx, float dy) {
+        nativeLook(dx, dy);
+    }
+
+    /** A console line for the game, as if typed at its console. */
+    static void command(String line) {
+        for (int i = 0; i < line.length(); ) {
+            int c = line.codePointAt(i);
+            nativeCommandChar(c);
+            i += Character.charCount(c);
+        }
+        nativeCommandEnd();
+    }
+
+    @Override
+    protected void onPause() {
+        if (pad != null) {
+            pad.releaseAll();
+        }
+        super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
+        if (overlay != null) {
+            try {
+                getWindowManager().removeView(overlay);
+            } catch (RuntimeException ignored) {
+            }
+            overlay = null;
+        }
         if (broadcastLock != null && broadcastLock.isHeld()) {
             broadcastLock.release();
         }
@@ -216,6 +379,7 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             }
             state.hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X);
             state.hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y);
+            controllerUsed();
             sendPad(event.getDeviceId(), state);
             return true;
         }
@@ -229,6 +393,7 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
         boolean padKey = KeyEvent.isGamepadButton(code)
                 || (isPad(event.getSource()) && code >= KeyEvent.KEYCODE_DPAD_UP && code <= KeyEvent.KEYCODE_DPAD_RIGHT);
         if (padKey) {
+            controllerUsed();
             if (event.getRepeatCount() == 0) {
                 if (code == KeyEvent.KEYCODE_BUTTON_L2 || code == KeyEvent.KEYCODE_BUTTON_R2) {
                     // A trigger: merged with its axis, never sent as a button of its own.
@@ -280,4 +445,16 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
     private static native void nativePadRemoved(int device);
 
     private static native void nativeBack();
+
+    private static native void nativeStick(float x, float y);
+
+    private static native void nativeLook(float dx, float dy);
+
+    private static native void nativeLookSpeed(float degreesPerPixel);
+
+    private static native boolean nativeMenuOpen();
+
+    private static native void nativeCommandChar(int c);
+
+    private static native void nativeCommandEnd();
 }

@@ -125,6 +125,10 @@ edit(app,
      "            let size = st.window.inner_size();\n"
      "            let acts = crate::android::menu_frame(menu_open, size.width as f32, size.height as f32);\n"
      "            if let Some(sh) = st.shell.as_mut() {\n"
+     "                // The mod menu's lines, run as if typed at the console.\n"
+     "                for line in crate::android::take_commands() {\n"
+     "                    sh.console_line(&mut st.input, &line);\n"
+     "                }\n"
      "                for act in acts {\n"
      "                    match act {\n"
      "                        crate::android::MenuAct::Key(k) => {\n"
@@ -137,4 +141,45 @@ edit(app,
      "            }\n"
      "        }\n",
      "controller and touch in the menus")
+
+# 6. input/mod.rs: the touch screen's look drag turns the view like a mouse.
+edit("crates/client/src/input/mod.rs",
+     "        yaw += pad_yaw;\n        pitch += pad_pitch;\n",
+     "        yaw += pad_yaw;\n        pitch += pad_pitch;\n"
+     "        #[cfg(target_os = \"android\")]\n"
+     "        {\n"
+     "            let (touch_yaw, touch_pitch) = crate::android::take_look();\n"
+     "            yaw += touch_yaw;\n"
+     "            pitch += touch_pitch;\n"
+     "        }\n",
+     "touch look")
+
+# 7. console.rs: the mod menu's trickshot commands go to the server.
+edit("crates/client/src/console.rs",
+     '    "where",\n];\n',
+     '    "where",\n'
+     '    // Legacy 4 mod menu (server side: crates/server/src/legacy4.rs).\n'
+     '    "l4save",\n    "l4load",\n    "l4noclip",\n    "l4god",\n    "l4bothere",\n    "l4botfreeze",\n    "l4botmove",\n];\n',
+     "trickshot commands sent to the server")
+
+# 8. Server: the trickshot commands themselves.
+shutil.copy(legacy4 / "src" / "server_legacy4.rs", "crates/server/src/legacy4.rs")
+edit("crates/server/src/lib.rs", "pub mod vote;\n", "pub mod vote;\npub mod legacy4;\n", "server legacy4 module")
+edit("crates/server/src/server.rs",
+     '            Some("where") => self.game.where_am_i(slot),\n',
+     '            Some("where") => self.game.where_am_i(slot),\n'
+     '            // Legacy 4 mod menu: save/load for everyone, the rest for the host (loopback).\n'
+     '            Some(v) if v.starts_with("l4") => {\n'
+     '                let text = self.game.legacy4_command(slot, v, loopback);\n'
+     '                if !text.is_empty() {\n'
+     '                    self.game.send(\n'
+     '                        Dest::Client(slot),\n'
+     '                        ServerCmd::Print {\n'
+     '                            kind: PrintKind::Normal,\n'
+     '                            text: format!("{text}\\n"),\n'
+     '                        },\n'
+     '                    );\n'
+     '                }\n'
+     '            }\n',
+     "server trickshot commands")
 print("patch_client: all changes applied")

@@ -36,3 +36,12 @@ Le module est partagé par toutes les applis Legacy Mobile :
   croix : haut utiliser, bas couché, gauche/droite se pencher.
 - Dans les menus : croix = flèches, A = valider, B ou Start = retour, stick gauche = curseur, LB/RB = gauche/droite.
 - Le doigt sert de souris dans les menus. Bouton retour du téléphone = menu / retour.
+
+## Tactile et menu Legacy (0.4)
+- `TouchPad.java` : boutons à l'écran dans une fenêtre transparente au-dessus du jeu (même disposition que Legacy
+  Warfare). Stick à gauche, glisser à droite pour viser, FIRE vise aussi en glissant. Ils se cachent quand une manette
+  sert, et dans les menus du jeu le doigt redevient la souris (seul MENU reste).
+- `ModMenu.java` : le menu Legacy (bouton MENU) : TRICKSHOT, BOTS, LAN, GRAPHICS, CONTROLS, ACCOUNT. Chaque bouton
+  envoie une ligne de console au jeu.
+- `src/server_legacy4.rs` → `crates/server/src/legacy4.rs` : commandes serveur `l4save`, `l4load` (tout le monde),
+  `l4noclip`, `l4god`, `l4bothere`, `l4botfreeze`, `l4botmove` (l'hôte seulement).
