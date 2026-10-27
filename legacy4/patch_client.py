@@ -99,4 +99,42 @@ edit(app,
      "    }\n\n"
      "    fn user_event(&mut self, el: &ActiveEventLoop, ready: Ready) {\n",
      "stop when the app is left")
+
+# 4. pad.rs: on Android the controller comes from GameActivity (JNI), not from gilrs.
+pad = "crates/client/src/input/pad.rs"
+edit(pad,
+     "    pub fn poll(&mut self) -> Vec<(&'static str, bool)> {\n",
+     "    pub fn poll(&mut self) -> Vec<(&'static str, bool)> {\n"
+     "        #[cfg(target_os = \"android\")]\n"
+     "        {\n"
+     "            let (left, right, edges) = crate::android::pad_poll();\n"
+     "            self.left = left;\n"
+     "            self.right = right;\n"
+     "            #[allow(clippy::needless_return)]\n"
+     "            return edges;\n"
+     "        }\n"
+     "        #[allow(unreachable_code)]\n",
+     "Android controller")
+
+# 5. app.rs: in the menus, the controller and the touch screen give menu keys and a cursor.
+edit(app,
+     "        st.menu_was_open = menu_open;\n",
+     "        st.menu_was_open = menu_open;\n"
+     "        #[cfg(target_os = \"android\")]\n"
+     "        {\n"
+     "            let size = st.window.inner_size();\n"
+     "            let acts = crate::android::menu_frame(menu_open, size.width as f32, size.height as f32);\n"
+     "            if let Some(sh) = st.shell.as_mut() {\n"
+     "                for act in acts {\n"
+     "                    match act {\n"
+     "                        crate::android::MenuAct::Key(k) => {\n"
+     "                            sh.key(&mut st.input, k);\n"
+     "                        }\n"
+     "                        crate::android::MenuAct::Move(x, y) => sh.mouse_move(&mut st.input, x, y),\n"
+     "                        crate::android::MenuAct::Up => sh.mouse_up(),\n"
+     "                    }\n"
+     "                }\n"
+     "            }\n"
+     "        }\n",
+     "controller and touch in the menus")
 print("patch_client: all changes applied")

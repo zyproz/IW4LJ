@@ -149,7 +149,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.2: starting with {args:?}");
+    eprintln!("Legacy 4 0.3: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
@@ -163,4 +163,278 @@ fn android_main(app: AndroidApp) {
         );
     }
     let _ = fs::remove_file(media.join("running.txt"));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Controller and touch, sent by GameActivity.java over JNI (Android gives a NativeActivity's controller to nobody:
+// winit turns its buttons into unknown keys and drops its sticks, so the activity takes the input itself).
+// In a match the pad drives the client's own gamepad binds (`pad_a`, `pad_rt`...: input/extra_binds.cfg).
+// In the menus it becomes menu keys and a cursor: D-pad = arrows, A = select, B/Start = back, left stick = cursor.
+
+use crate::ui::UiKey;
+use std::sync::Mutex;
+use std::time::Instant;
+
+#[derive(Default)]
+struct PadShared {
+    left: (f32, f32),
+    right: (f32, f32),
+    lt: bool,
+    rt: bool,
+    hat: (i32, i32),
+    /// Button edges for the match (the client's bind names).
+    game: Vec<(&'static str, bool)>,
+    /// Button edges for the menus.
+    menu: Vec<(&'static str, bool)>,
+    /// Held in the match, released when a menu opens or the pad goes away.
+    held: Vec<&'static str>,
+    /// Touches for the menus: (phase 0 down / 1 move / 2 up / 3 cancel, x, y in 0..1).
+    touch: Vec<(i32, f32, f32)>,
+    finger: Option<i32>,
+    menu_open: bool,
+    /// The menu cursor, in pixels; `None` until the window size is known.
+    cursor: Option<(f32, f32)>,
+    /// The last menu move came from the stick (A clicks) rather than the D-pad (A selects).
+    stick_last: bool,
+    last_poll: Option<Instant>,
+}
+
+static PAD: Mutex<Option<PadShared>> = Mutex::new(None);
+
+fn with_pad<R>(f: impl FnOnce(&mut PadShared) -> R) -> R {
+    let mut guard = PAD.lock().unwrap_or_else(|e| e.into_inner());
+    f(guard.get_or_insert_with(PadShared::default))
+}
+
+fn edge(p: &mut PadShared, name: &'static str, down: bool) {
+    if p.menu_open {
+        p.menu.push((name, down));
+    } else {
+        if down {
+            p.held.push(name);
+        } else {
+            p.held.retain(|n| *n != name);
+        }
+        p.game.push((name, down));
+    }
+}
+
+/// Android key codes (KeyEvent.KEYCODE_*) to the client's pad names.
+fn pad_key(code: i32) -> Option<&'static str> {
+    Some(match code {
+        96 => "pad_a",
+        97 => "pad_b",
+        99 => "pad_x",
+        100 => "pad_y",
+        102 => "pad_lb",
+        103 => "pad_rb",
+        106 => "pad_ls",
+        107 => "pad_rs",
+        108 => "pad_start",
+        109 => "pad_back",
+        19 => "pad_dpad_up",
+        20 => "pad_dpad_down",
+        21 => "pad_dpad_left",
+        22 => "pad_dpad_right",
+        _ => return None,
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativePadButton(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    _device: i32,
+    keycode: i32,
+    down: u8,
+) {
+    if let Some(name) = pad_key(keycode) {
+        with_pad(|p| edge(p, name, down != 0));
+    }
+}
+
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativePadAxes(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    _device: i32,
+    lx: f32,
+    ly: f32,
+    rx: f32,
+    ry: f32,
+    lt: f32,
+    rt: f32,
+    hat_x: f32,
+    hat_y: f32,
+) {
+    with_pad(|p| {
+        // Android's sticks point down for +Y; the client (gilrs) expects up.
+        p.left = (lx, -ly);
+        p.right = (rx, -ry);
+        // Triggers become buttons, with a little hysteresis so a half pull does not flicker.
+        let mut edges = Vec::new();
+        for (value, state, name) in [(lt, &mut p.lt, "pad_lt"), (rt, &mut p.rt, "pad_rt")] {
+            let now = if *state { value > 0.25 } else { value > 0.5 };
+            if now != *state {
+                *state = now;
+                edges.push((name, now));
+            }
+        }
+        for (name, down) in edges {
+            edge(p, name, down);
+        }
+        // Some pads give the D-pad as an axis pair instead of keys.
+        let hat = (hat_x.round() as i32, hat_y.round() as i32);
+        if hat != p.hat {
+            let old = p.hat;
+            p.hat = hat;
+            for (was, is, minus, plus) in [
+                (old.0, hat.0, "pad_dpad_left", "pad_dpad_right"),
+                (old.1, hat.1, "pad_dpad_up", "pad_dpad_down"),
+            ] {
+                if was != is {
+                    if was != 0 {
+                        edge(p, if was < 0 { minus } else { plus }, false);
+                    }
+                    if is != 0 {
+                        edge(p, if is < 0 { minus } else { plus }, true);
+                    }
+                }
+            }
+        }
+    });
+}
+
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativePadRemoved(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    _device: i32,
+) {
+    with_pad(|p| {
+        p.left = (0.0, 0.0);
+        p.right = (0.0, 0.0);
+        for name in std::mem::take(&mut p.held) {
+            p.game.push((name, false));
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeTouch(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    id: i32,
+    phase: i32,
+    x: f32,
+    y: f32,
+) {
+    with_pad(|p| {
+        if p.finger.is_some_and(|f| f != id) {
+            return;
+        }
+        match phase {
+            0 => p.finger = Some(id),
+            2 | 3 => p.finger = None,
+            _ => {}
+        }
+        p.touch.push((phase, x, y));
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeBack(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) {
+    // The phone's Back: Escape in a menu, the pause menu in a match.
+    with_pad(|p| {
+        edge(p, "pad_start", true);
+        edge(p, "pad_start", false);
+    });
+}
+
+/// For the client's `Pad::poll`: stick positions and the match's button edges (nothing while a menu is open).
+pub fn pad_poll() -> ((f32, f32), (f32, f32), Vec<(&'static str, bool)>) {
+    with_pad(|p| {
+        let edges = std::mem::take(&mut p.game);
+        if p.menu_open {
+            ((0.0, 0.0), (0.0, 0.0), edges)
+        } else {
+            (p.left, p.right, edges)
+        }
+    })
+}
+
+/// What the menus get from the pad and the touch screen this frame.
+pub enum MenuAct {
+    Key(UiKey),
+    Move(f32, f32),
+    Up,
+}
+
+/// Called every frame with whether a menu has the input, and the window size in pixels.
+pub fn menu_frame(open: bool, width: f32, height: f32) -> Vec<MenuAct> {
+    with_pad(|p| {
+        let now = Instant::now();
+        let dt = p.last_poll.map_or(0.0, |t| now.duration_since(t).as_secs_f32()).min(0.1);
+        p.last_poll = Some(now);
+        if open && !p.menu_open {
+            // A menu opened: let go of whatever the match held.
+            for name in std::mem::take(&mut p.held) {
+                p.game.push((name, false));
+            }
+        }
+        p.menu_open = open;
+        let mut out = Vec::new();
+        if !open {
+            p.menu.clear();
+            p.touch.clear();
+            return out;
+        }
+        let mut cursor = p.cursor.unwrap_or((width * 0.5, height * 0.5));
+        for (phase, x, y) in std::mem::take(&mut p.touch) {
+            cursor = (x * width, y * height);
+            out.push(MenuAct::Move(cursor.0, cursor.1));
+            match phase {
+                0 => out.push(MenuAct::Key(UiKey::Mouse1)),
+                2 | 3 => out.push(MenuAct::Up),
+                _ => {}
+            }
+        }
+        let (lx, ly) = p.left;
+        if lx.hypot(ly) > 0.2 {
+            let speed = height * 0.9 * dt;
+            cursor.0 = (cursor.0 + lx * speed).clamp(0.0, width - 1.0);
+            cursor.1 = (cursor.1 - ly * speed).clamp(0.0, height - 1.0);
+            out.push(MenuAct::Move(cursor.0, cursor.1));
+            p.stick_last = true;
+        }
+        p.cursor = Some(cursor);
+        for (name, down) in std::mem::take(&mut p.menu) {
+            if !down {
+                if name == "pad_a" && p.stick_last {
+                    out.push(MenuAct::Up);
+                }
+                continue;
+            }
+            let key = match name {
+                "pad_dpad_up" => UiKey::Up,
+                "pad_dpad_down" => UiKey::Down,
+                "pad_dpad_left" | "pad_lb" => UiKey::Left,
+                "pad_dpad_right" | "pad_rb" => UiKey::Right,
+                "pad_a" if p.stick_last => UiKey::Mouse1,
+                "pad_a" => UiKey::Enter,
+                "pad_b" | "pad_start" => UiKey::Escape,
+                _ => continue,
+            };
+            if name.starts_with("pad_dpad") {
+                p.stick_last = false;
+            }
+            out.push(MenuAct::Key(key));
+        }
+        out
+    })
 }

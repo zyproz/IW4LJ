@@ -28,3 +28,11 @@ Le module est partagé par toutes les applis Legacy Mobile :
 - `steam/` : récupère JavaSteam et ses dépendances pendant le build (`build.gradle.kts`, `prepare_jars.py`).
 - L'appli dit quel jeu prendre avec des « extras » : `app_id` (CoD4 = 7940), `target_dir`, `files` (expressions
   comme `main/.*`), `check_dirs`, `mode` (`qr` ou `account`), `next_activity`.
+
+## Manette (0.3)
+`GameActivity.java` garde les entrées (comme Legacy Warfare) et les envoie au jeu par JNI (`android.rs`).
+- En partie : les touches manette du moteur (`input/extra_binds.cfg`) : RT tir, LT viser, A sauter, B accroupi,
+  X recharger, Y changer d'arme, LB/RB grenades, L3 sprint, R3 couteau, Start menu, Select scores,
+  croix : haut utiliser, bas couché, gauche/droite se pencher.
+- Dans les menus : croix = flèches, A = valider, B ou Start = retour, stick gauche = curseur, LB/RB = gauche/droite.
+- Le doigt sert de souris dans les menus. Bouton retour du téléphone = menu / retour.
