@@ -210,7 +210,7 @@ edit("crates/client/src/input/mod.rs",
 edit("crates/server/src/fire.rs",
      "            self.bullet_impact_event(shooter, weapon, &h);\n            if !h.damageable {\n",
      "            self.bullet_impact_event(shooter, weapon, &h);\n"
-     "            if crate::legacy4::explosive(shooter) {\n"
+     "            if crate::legacy4::explosive(shooter) && !self.client(shooter).is_some_and(|c| c.bot) {\n"
      "                let blast = crate::combat::Blast {\n"
      "                    origin: h.point,\n"
      "                    radius: 260.0,\n"
@@ -255,7 +255,11 @@ edit("crates/client/src/shell.rs",
 edit("crates/server/src/combat.rs",
      "    pub fn g_damage(&mut self, vm: &mut Vm, target: u16, d: Damage) {\n        let Some(t) = self.ent(target) else { return };\n",
      "    pub fn g_damage(&mut self, vm: &mut Vm, target: u16, d: Damage) {\n        let Some(t) = self.ent(target) else { return };\n"
-     "        if t.kind == EntKind::Client && crate::legacy4::god(target) {\n"
+     "        // Never a bot: the list is by client slot, and a bot can take a slot a player had before.\n"
+     "        if t.kind == EntKind::Client\n"
+     "            && crate::legacy4::god(target)\n"
+     "            && !self.client(target).is_some_and(|c| c.bot)\n"
+     "        {\n"
      "            return;\n"
      "        }\n",
      "god mode")
@@ -302,4 +306,17 @@ edit(tex,
      "        };\n"
      "        let image = match replaced.map(Ok).unwrap_or_else(|| iwi::load_picmip(vfs, name, picmip)) {\n",
      "override in the loader")
+
+# 15. netplay.rs: the weapon switch cancel (pressing weapnext twice). The request for a weapon was dropped as soon as
+#     that weapon was in hand, which it still is while it goes down: the second press asked for it back and was
+#     forgotten at once, so the switch went through. The request now lasts until the drop is over.
+edit("crates/client/src/netplay.rs",
+     "        if self.want_weapon == Some(snap.ps.weapon as u16) {\n            self.want_weapon = None;\n        }\n",
+     "        if self.want_weapon == Some(snap.ps.weapon as u16)\n"
+     "            && !matches!(\n"
+     "                snap.ps.weapon_state,\n"
+     "                sim::pm::weapon_state::DROPPING | sim::pm::weapon_state::DROPPING_QUICK\n"
+     "            )\n"
+     "        {\n            self.want_weapon = None;\n        }\n",
+     "weapon switch cancel")
 print("patch_client: all changes applied")

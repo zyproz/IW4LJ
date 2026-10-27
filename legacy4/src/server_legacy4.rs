@@ -56,6 +56,9 @@ impl Game {
         if me.session != Session::Playing {
             return "Spawn first.".to_owned();
         }
+        if me.bot {
+            return String::new();
+        }
         let (origin, angles) = (me.ps.origin, me.ps.viewangles);
         match verb {
             "l4save" => {

@@ -72,3 +72,10 @@ soldat, brumes et logo CoD4 transparents. `journal.txt` note chaque image rempla
 - Balles explosives : rayon 260, 300 de dégâts au centre, 160 au bord.
 - Manette : sensibilité du stick 1 à 10 dans CONTROLS (`in_gamepad_yawrate` / `pitchrate`) ; bouton Xbox/PS = menu
   Legacy ; dans le menu : croix/stick pour se déplacer, A valider, B/Start/Xbox fermer, LB/RB changer d'onglet.
+
+## 0.10
+- Double Y / double triangle (annuler un changement d'arme) : la demande d'arme du client était oubliée pendant que
+  l'arme descendait ; elle dure maintenant jusqu'à la fin de la descente (`netplay.rs`, étape 15).
+- God mode et balles explosives ne s'appliquent jamais à un bot (listes par place de joueur côté serveur).
+- À savoir : en noclip, comme dans le CoD4 d'origine, on ne tire pas (pas d'arme dans `PmType::Noclip`) et on ne
+  prend pas de dégâts. Sortir du noclip avant de tirer.

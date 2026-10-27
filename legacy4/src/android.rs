@@ -237,7 +237,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.9: starting with {args:?}");
+    eprintln!("Legacy 4 0.10: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
