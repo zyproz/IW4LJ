@@ -133,6 +133,13 @@ edit(app,
      "                for line in crate::android::take_commands() {\n"
      "                    sh.console_line(&mut st.input, &line);\n"
      "                }\n"
+     "                // UNLOCK ALL stays: every weapon, attachment and camo of the menus (stat 3000 + weapon number,\n"
+     "                // bit 0 = unlocked), whatever a server or an old profile says.\n"
+     "                if crate::android::unlock_all() {\n"
+     "                    for s in sh.st.stats.iter_mut().skip(3000).take(90) {\n"
+     "                        *s |= 0x7fff;\n"
+     "                    }\n"
+     "                }\n"
      "                for act in acts {\n"
      "                    match act {\n"
      "                        crate::android::MenuAct::Key(k) => {\n"
@@ -273,6 +280,14 @@ edit("crates/client/src/shell.rs",
      "                            }\n"
      "                        }\n"
      "                    }\n"
+     "                    // Every weapon the stock menus test (stat 3000 + weapon number, 3000..3089: bit 0 = unlocked,\n"
+     "                    // bits 1..14 = attachments and camos), whatever the table gave.\n"
+     "                    for i in 3000..=3089 {\n"
+     "                        wanted.push((i, 0x7fff));\n"
+     "                    }\n"
+     "                    // From now on the client keeps them unlocked (app.rs, every frame).\n"
+     "                    #[cfg(target_os = \"android\")]\n"
+     "                    crate::android::set_unlock_all();\n"
      "                    tracing::info!(items, weapons, ?other, \"legacy4: unlock all from mp/statstable.csv\");\n"
      "                    let mut pairs = Vec::new();\n"
      "                    for (i, v) in wanted {\n"
@@ -363,6 +378,7 @@ edit(tex,
 edit("crates/client/src/netplay.rs",
      "        if self.want_weapon == Some(snap.ps.weapon as u16) {\n            self.want_weapon = None;\n        }\n",
      "        if self.want_weapon == Some(snap.ps.weapon as u16)\n"
+     "            && !l4_cancel_wait\n"
      "            && !matches!(\n"
      "                snap.ps.weapon_state,\n"
      "                sim::pm::weapon_state::DROPPING | sim::pm::weapon_state::DROPPING_QUICK\n"
@@ -428,9 +444,9 @@ edit("crates/server/src/netsv.rs",
      ".filter(|t| (*t != slot || c.archive_time > 0.0) && c.session == Session::Spectator);",
      "final killcam: the killer watches himself")
 
-# 18. netplay.rs: double weapnext at once (faster than the server answers): the first press asks for the other
-#     weapon; the second comes before the drop has begun, so it is kept and turned into the cancel as soon as the
-#     server starts the drop.
+# 18. Double weapnext / double Y (the switch cancel), client and server.
+#     netplay.rs: the second press asks at once for the weapon in hand again, and that request is kept (not dropped
+#     because the weapon is in hand) until the server shows the drop, then as long as the drop lasts (step 15).
 edit("crates/client/src/netplay.rs",
      "        let inv = PlayerWeapons::from_words(&snap.inv);\n"
      "        let cur = self.selected_weapon(&inv, ps);\n"
@@ -439,41 +455,60 @@ edit("crates/client/src/netplay.rs",
      "            self.select_weapon(w);\n"
      "        }\n",
      "        let held = ps.weapon as u16;\n"
-     "        let dropping = matches!(\n"
-     "            ps.weapon_state,\n"
-     "            sim::pm::weapon_state::DROPPING | sim::pm::weapon_state::DROPPING_QUICK\n"
-     "        );\n"
      "        let inv = PlayerWeapons::from_words(&snap.inv);\n"
      "        let cur = self.selected_weapon(&inv, ps);\n"
      "        if let Some(w) = inv.cycle_primary(&self.weapons, cur, self.latest_primary, forward, false)\n"
      "        {\n"
-     "            if w == held && self.want_weapon.is_some_and(|x| x != held) && !dropping {\n"
-     "                L4_SWITCH_CANCEL.store(true, std::sync::atomic::Ordering::Relaxed);\n"
-     "            } else {\n"
-     "                L4_SWITCH_CANCEL.store(false, std::sync::atomic::Ordering::Relaxed);\n"
-     "                self.select_weapon(w);\n"
-     "            }\n"
+     "            let cancel = w == held && self.want_weapon.is_some_and(|x| x != held);\n"
+     "            *L4_SWITCH_CANCEL.lock().unwrap_or_else(|e| e.into_inner()) =\n"
+     "                cancel.then(std::time::Instant::now);\n"
+     "            self.select_weapon(w);\n"
      "        }\n",
-     "double weapnext: remember the cancel")
+     "double weapnext: ask for the held weapon at once")
 edit("crates/client/src/netplay.rs",
      "        // A weapon the player asked for is asked for until it is held; after that the scripts decide.\n",
-     "        if L4_SWITCH_CANCEL.load(std::sync::atomic::Ordering::Relaxed) {\n"
-     "            if self.want_weapon.is_none() {\n"
-     "                L4_SWITCH_CANCEL.store(false, std::sync::atomic::Ordering::Relaxed);\n"
-     "            } else if matches!(\n"
+     "        // Legacy 4: a switch cancel waits (at most 0.7 s) for the server to start the drop it cancels.\n"
+     "        let l4_cancel_wait = {\n"
+     "            let mut pending = L4_SWITCH_CANCEL.lock().unwrap_or_else(|e| e.into_inner());\n"
+     "            let dropping = matches!(\n"
      "                snap.ps.weapon_state,\n"
      "                sim::pm::weapon_state::DROPPING | sim::pm::weapon_state::DROPPING_QUICK\n"
-     "            ) {\n"
-     "                L4_SWITCH_CANCEL.store(false, std::sync::atomic::Ordering::Relaxed);\n"
-     "                self.want_weapon = Some(snap.ps.weapon as u16);\n"
+     "            );\n"
+     "            match *pending {\n"
+     "                Some(t) if !dropping && t.elapsed().as_millis() < 700 => true,\n"
+     "                _ => {\n"
+     "                    *pending = None;\n"
+     "                    false\n"
+     "                }\n"
      "            }\n"
-     "        }\n"
+     "        };\n"
      "        // A weapon the player asked for is asked for until it is held; after that the scripts decide.\n",
-     "double weapnext: cancel once the drop begins")
+     "double weapnext: the cancel waits for the drop")
 with open("crates/client/src/netplay.rs", "a") as f:
-    f.write("\n/// Legacy 4: a second weapnext came before the server began the switch; it cancels it once the drop starts.\n"
-            "static L4_SWITCH_CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n")
+    f.write("\n/// Legacy 4: when the switch cancel (a second weapnext back to the weapon in hand) was asked for.\n"
+            "static L4_SWITCH_CANCEL: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);\n")
 print("ok  double weapnext flag")
+#     server client.rs: the person asks for the weapon in hand while it goes down: the switch is cancelled, as the
+#     original's PM_Weapon_CheckForChangeWeapon does (the gun comes back up). The server kept the earlier request
+#     (`selected`) and finished the switch anyway, then switched back.
+edit("crates/server/src/client.rs",
+     "            c.inv.select(want);\n        }\n        c.old_cmd = c.cmd;\n",
+     "            c.inv.select(want);\n        }\n"
+     "        if want != 0\n"
+     "            && want == c.ps.weapon as u16\n"
+     "            && c.inv.selected() != 0\n"
+     "            && c.inv.selected() != want\n"
+     "            && c.inv.has(want)\n"
+     "            && c.ps.pm_type < PmType::Dead\n"
+     "            && matches!(\n"
+     "                c.ps.weapon_state,\n"
+     "                pm::weapon_state::DROPPING | pm::weapon_state::DROPPING_QUICK\n"
+     "            )\n"
+     "        {\n"
+     "            c.inv.select(want);\n"
+     "        }\n"
+     "        c.old_cmd = c.cmd;\n",
+     "double weapnext: the server cancels the switch")
 
 # 19. bullet.rs: sniper wallbangs everywhere (trickshots): sniper rifles (rifle class, large penetration) go through
 #     8 times the thickness, and through some of what the table makes solid.
@@ -486,4 +521,132 @@ edit("crates/server/src/bullet.rs",
      "            if sniper { (d * 8.0).max(48.0) } else { d }\n"
      "        };\n",
      "sniper wallbangs")
+# 20. archive.rs / netsv.rs: killcams (and the final one, slowed down) replay the recorded frames with the bodies and
+#     the view between the two frames around the moment shown, instead of one server frame after another (which
+#     stood still then jumped, three times a frame when slowed).
+edit("crates/server/src/archive.rs",
+     "    /// The newest frame at or before `time`, else the oldest one.\n",
+     "    /// Legacy 4: the frame at `time`: positions, angles and view between the two recorded frames around it.\n"
+     "    pub fn at_smooth(&self, time: i32) -> Option<Frame> {\n"
+     "        let i = self.frames.partition_point(|f| f.time <= time);\n"
+     "        let a = self.frames.get(i.saturating_sub(1))?;\n"
+     "        let b = match self.frames.get(i) {\n"
+     "            Some(b) if i > 0 => b,\n"
+     "            _ => return Some(a.clone()),\n"
+     "        };\n"
+     "        let f = ((time - a.time) as f32 / (b.time - a.time).max(1) as f32).clamp(0.0, 1.0);\n"
+     "        let ang = |x: f32, y: f32| x + ((y - x + 180.0).rem_euclid(360.0) - 180.0) * f;\n"
+     "        let near = |p: [f32; 3], q: [f32; 3]| (0..3).map(|k| (q[k] - p[k]).powi(2)).sum::<f32>() < 65536.0;\n"
+     "        let mut out = a.clone();\n"
+     "        out.time = time;\n"
+     "        for e in &mut out.entities {\n"
+     "            let Ok(k) = b.entities.binary_search_by_key(&e.state.number, |x| x.state.number) else {\n"
+     "                continue;\n"
+     "            };\n"
+     "            let (s, t) = (&mut e.state, &b.entities[k].state);\n"
+     "            if s.etype == t.etype && s.client == t.client && near(s.origin, t.origin) {\n"
+     "                for k in 0..3 {\n"
+     "                    s.origin[k] += (t.origin[k] - s.origin[k]) * f;\n"
+     "                    s.angles[k] = ang(s.angles[k], t.angles[k]);\n"
+     "                }\n"
+     "            }\n"
+     "        }\n"
+     "        for (p, q) in out.players.iter_mut().zip(&b.players) {\n"
+     "            if let (Some(p), Some(q)) = (p.as_mut(), q.as_ref())\n"
+     "                && near(p.ps.origin, q.ps.origin)\n"
+     "            {\n"
+     "                for k in 0..3 {\n"
+     "                    p.ps.origin[k] += (q.ps.origin[k] - p.ps.origin[k]) * f;\n"
+     "                    p.ps.viewangles[k] = ang(p.ps.viewangles[k], q.ps.viewangles[k]);\n"
+     "                }\n"
+     "                p.ps.view_height_current += (q.ps.view_height_current - p.ps.view_height_current) * f;\n"
+     "                p.ps.weapon_pos_frac += (q.ps.weapon_pos_frac - p.ps.weapon_pos_frac) * f;\n"
+     "            }\n"
+     "        }\n"
+     "        Some(out)\n"
+     "    }\n\n"
+     "    /// The newest frame at or before `time`, else the oldest one.\n",
+     "smooth replay frames")
+edit("crates/server/src/netsv.rs",
+     "            .then(|| self.archive.at(server_time - archive_ms))\n",
+     "            .then(|| self.archive.at_smooth(server_time - archive_ms))\n",
+     "killcams use the smooth frames")
+edit("crates/server/src/netsv.rs",
+     "        if let Some(f) = past {\n",
+     "        if let Some(f) = &past {\n",
+     "killcams use the smooth frames (borrow)")
+
+# 21. netplay.rs: the view of a watched player (killcam, final killcam, spectating) between the two snapshots around
+#     the moment the other bodies are drawn at, instead of the newest snapshot as it came: it moves at the screen's
+#     rate (60 images a second and more), not the server's.
+edit("crates/net/src/view.rs",
+     "    /// Forgets the history (a new level restarts the server clock).\n",
+     "    /// Legacy 4: the two snapshots around `time` and how far between them it is (0 to 1).\n"
+     "    pub fn l4_around(&self, time: i32) -> Option<(&Snapshot, &Snapshot, f32)> {\n"
+     "        let i = self.snaps.iter().position(|(_, s)| s.server_time > time)?;\n"
+     "        let a = &self.snaps.get(i.checked_sub(1)?)?.1;\n"
+     "        let b = &self.snaps.get(i)?.1;\n"
+     "        let span = (b.server_time - a.server_time).max(1) as f32;\n"
+     "        Some((a, b, ((time - a.server_time) as f32 / span).clamp(0.0, 1.0)))\n"
+     "    }\n\n"
+     "    /// Forgets the history (a new level restarts the server clock).\n",
+     "snapshots around a time")
+edit("crates/client/src/netplay.rs",
+     "            let ps = snap.ps.clone();\n            self.kick.clear();\n",
+     "            let ps = l4_follow_ps(&self.net.snaps, &snap, st);\n            self.kick.clear();\n",
+     "smooth followed view")
+with open("crates/client/src/netplay.rs", "a") as f:
+    f.write(r"""
+/// Legacy 4: the watched player's state at the moment the other bodies are drawn at (`INTERP_DELAY_MS` back), its
+/// position, view and aim between the two snapshots around it; the newest one when they do not show the same player.
+fn l4_follow_ps(
+    snaps: &net::view::SnapshotBuffer,
+    latest: &net::snapshot::Snapshot,
+    st: i32,
+) -> PlayerState {
+    let Some((a, b, f)) = snaps.l4_around(st - net::view::INTERP_DELAY_MS) else {
+        return latest.ps.clone();
+    };
+    let same = match (a.follow, b.follow) {
+        (Some(x), Some(y)) => x.followed == y.followed && a.ps.client_num == b.ps.client_num,
+        _ => false,
+    };
+    let jump: f32 = (0..3).map(|k| (b.ps.origin[k] - a.ps.origin[k]).powi(2)).sum();
+    if !same || jump > 65536.0 {
+        return latest.ps.clone();
+    }
+    let ang = |x: f32, y: f32| x + ((y - x + 180.0).rem_euclid(360.0) - 180.0) * f;
+    let mut ps = b.ps.clone();
+    for k in 0..3 {
+        ps.origin[k] = a.ps.origin[k] + (b.ps.origin[k] - a.ps.origin[k]) * f;
+        ps.viewangles[k] = ang(a.ps.viewangles[k], b.ps.viewangles[k]);
+    }
+    ps.view_height_current =
+        a.ps.view_height_current + (b.ps.view_height_current - a.ps.view_height_current) * f;
+    ps.weapon_pos_frac = a.ps.weapon_pos_frac + (b.ps.weapon_pos_frac - a.ps.weapon_pos_frac) * f;
+    ps
+}
+""")
+print("ok  smooth followed view (function)")
+
+# 22. ui/assets.rs: the killcam without the two red bands of the stock hud (menu "killcam": two white shaders tinted
+#     dark red, top and bottom); the KILLCAM title stays.
+edit("crates/client/src/ui/assets.rs",
+     "            a.load_file(&path, \"mod\")?;\n        }\n        Ok(a)\n",
+     "            a.load_file(&path, \"mod\")?;\n        }\n"
+     "        match a.menus.get_mut(\"killcam\").map(Arc::get_mut) {\n"
+     "            Some(Some(m)) => {\n"
+     "                let before = m.items.len();\n"
+     "                m.items.retain(|it| {\n"
+     "                    let c = it.window.fore_color;\n"
+     "                    !(it.window.background.is_some() && c[0] > 0.4 && c[0] < 0.6 && c[1] < 0.1 && c[2] < 0.1)\n"
+     "                });\n"
+     "                tracing::info!(removed = before - m.items.len(), \"legacy4: killcam red bands removed\");\n"
+     "            }\n"
+     "            Some(None) => tracing::warn!(\"legacy4: killcam menu shared, red bands kept\"),\n"
+     "            None => {}\n"
+     "        }\n"
+     "        Ok(a)\n",
+     "killcam without red bands")
+
 print("patch_client: all changes applied")

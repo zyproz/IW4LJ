@@ -239,7 +239,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.13: starting with {args:?}");
+    eprintln!("Legacy 4 0.14: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
@@ -613,6 +613,28 @@ pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeCommandEnd(
             p.commands.push(line);
         }
     });
+}
+
+/// UNLOCK ALL, once used, stays on: `unlock-all.txt` in the app folder. 0 = not read yet, 1 = off, 2 = on.
+static UNLOCK_ALL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Whether the client keeps every weapon unlocked (app.rs, every frame).
+pub fn unlock_all() -> bool {
+    use std::sync::atomic::Ordering::Relaxed;
+    match UNLOCK_ALL.load(Relaxed) {
+        0 => {
+            let on = media_dir().join("unlock-all.txt").exists();
+            UNLOCK_ALL.store(if on { 2 } else { 1 }, Relaxed);
+            on
+        }
+        v => v == 2,
+    }
+}
+
+/// UNLOCK ALL was pressed: on for good.
+pub fn set_unlock_all() {
+    let _ = fs::write(media_dir().join("unlock-all.txt"), "on\n");
+    UNLOCK_ALL.store(2, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// The mod menu's console lines, run by the client as if typed at its console.

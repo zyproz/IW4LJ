@@ -112,3 +112,19 @@ que rejoue la killcam normale (`archive.rs`, 15 s) :
 - Manette : sensibilité 1 à 20 (8 par défaut, 560 °/s ; 20 = 1260 °/s) ; en visée, le stick ralentit avec le zoom
   comme la souris, fois le réglage « AIM » de CONTROLS (`l4_ads_sens`, 60 % par défaut).
 - Tactile : second bouton FIRE à gauche, sous l'ancienne mini-carte.
+
+## 0.14
+- UNLOCK ALL : les armes principales restaient verrouillées. Le menu Create a Class teste `stat(3000 + numéro de
+  l'arme) & 1` (`ui_mp/cac.inc`) ; les stats 3000..3089 sont maintenant posées directement (bit 0 + accessoires et
+  camos), sans dépendre de la table. Une fois UNLOCK ALL utilisé, `unlock-all.txt` (dossier de l'appli) le garde
+  actif : le client remet ces bits à chaque image (`patch_client.py` étapes 5 et 11).
+- Perk 1 grisé avec le M16 de la classe 1 : normal dans CoD4, le lance-grenades prend la place du perk 1. Enlever
+  l'accessoire pour choisir un perk 1.
+- Double Y : le serveur gardait la demande d'arme du premier appui et finissait le changement (pistolet), puis
+  revenait au sniper. Redemander l'arme en main pendant qu'elle descend annule maintenant le changement côté serveur,
+  comme `PM_Weapon_CheckForChangeWeapon` d'origine (étape 18, `server/src/client.rs`) ; le second appui part tout de
+  suite et attend que le serveur montre la descente (0,7 s au plus).
+- Killcam fluide : le serveur rejoue les images enregistrées en mélangeant les deux autour du moment montré
+  (`archive.rs` `at_smooth`, étape 20), et le client dessine la vue du joueur suivi entre deux snapshots, au rythme
+  de l'écran (étape 21). Le ralenti ne saccade plus.
+- Killcam : les deux bandes rouges du hud d'origine (menu `killcam`) sont retirées ; le titre reste (étape 22).
