@@ -43,7 +43,7 @@ jobs:
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;$NDK_VERSION"
+          "$SDKM" "platforms;android-34" "build-tools;36.0.0" "ndk;$NDK_VERSION"
 
       - name: Rust (version choisie par le moteur) et cible Android
         working-directory: cod4
@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           NDK="$ANDROID_HOME/ndk/$NDK_VERSION"
           BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          BT="$ANDROID_HOME/build-tools/34.0.0"
+          BT="$ANDROID_HOME/build-tools/36.0.0"
           JAR="$ANDROID_HOME/platforms/android-34/android.jar"
           L="legacy4"
           SO="cod4/target/aarch64-linux-android/release/libcod4e_android.so"
@@ -111,7 +111,12 @@ jobs:
           jar cf "$B/classes.jar" -C "$B/classes" .
           # Many libraries: d8 writes several classes*.dex files (multidex, Android 5+).
           export _JAVA_OPTIONS="-Xmx6g"
-          "$BT/d8" --release --lib "$JAR" --min-api 31 --output "$B/dex" "$B/classes.jar" "$B"/steamjars/*.jar
+          # Its full report goes into the artifact (d8.log): a failure shows only one line on GitHub.
+          if ! "$BT/d8" --release --lib "$JAR" --min-api 31 --output "$B/dex" "$B/classes.jar" "$B"/steamjars/*.jar \
+              > "$B/d8.log" 2>&1; then
+            cat "$B/d8.log"
+            exit 1
+          fi
           unset _JAVA_OPTIONS
           ls -l "$B/dex"
 
@@ -156,4 +161,5 @@ jobs:
           path: |
             build/Legacy4-*.apk
             build.log
+            build/d8.log
           if-no-files-found: warn
