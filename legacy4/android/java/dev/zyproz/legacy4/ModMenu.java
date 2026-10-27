@@ -212,6 +212,10 @@ public class ModMenu extends LinearLayout {
                 setting("BUTTONS BRIGHTER", "opacity", Math.min(1f, opacity + 0.1f)));
         row(setting("BUTTONS SMALLER", "size", Math.max(0.7f, size - 0.1f)),
                 setting("BUTTONS BIGGER", "size", Math.min(1.4f, size + 0.1f)));
+        int stick = prefs.getInt("stick_sens", 5);
+        hint("Controller turn speed: " + stick + " / 10   (" + stickYaw(stick) + " degrees per second)");
+        row(intSetting("STICK SLOWER", "stick_sens", Math.max(1, stick - 1)),
+                intSetting("STICK FASTER", "stick_sens", Math.min(10, stick + 1)));
         boolean toggle = prefs.getBoolean("aim_toggle", true);
         Button aim = button(toggle ? "AIM: TAP TO SWITCH (ON)" : "AIM: HOLD (ON)", false);
         aim.setOnClickListener(v -> {
@@ -325,6 +329,17 @@ public class ModMenu extends LinearLayout {
         return b;
     }
 
+    private Button intSetting(String text, String key, int value) {
+        Button b = button(text, false);
+        b.setOnClickListener(v -> {
+            prefs.edit().putInt(key, value).apply();
+            host.controlsChanged();
+            show(tab);
+            note.setText(text + ": " + value + " / 10");
+        });
+        return b;
+    }
+
     private static String modeName(String gt) {
         switch (gt) {
             case "war":
@@ -382,7 +397,33 @@ public class ModMenu extends LinearLayout {
         LayoutParams lp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
         lp.setMargins(dp(3), dp(3), dp(3), dp(3));
         b.setLayoutParams(lp);
+        // A controller shows where it is: the focused button gets a white frame.
+        b.setOnFocusChangeListener((v, has) -> {
+            GradientDrawable f = new GradientDrawable();
+            f.setColor(selected ? GREEN : Color.argb(200, 40, 44, 40));
+            f.setStroke(dp(has ? 3 : 1), has ? Color.WHITE : selected ? GREEN : Color.argb(200, 90, 100, 90));
+            f.setCornerRadius(dp(6));
+            v.setBackground(f);
+        });
         return b;
+    }
+
+    /** Puts the controller's focus on the first tab. */
+    void focusFirst() {
+        if (tabRow.getChildCount() > tab) {
+            tabRow.getChildAt(tab).requestFocus();
+        }
+    }
+
+    /** LB / RB: the previous or next tab. */
+    void nextTab(int step) {
+        show((tab + step + TABS.length) % TABS.length);
+        focusFirst();
+    }
+
+    /** Degrees per second at full stick for sensitivity 1..10. */
+    static int stickYaw(int level) {
+        return 80 + 40 * Math.max(1, Math.min(10, level));
     }
 
     private int dp(int v) {

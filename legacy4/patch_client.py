@@ -63,7 +63,7 @@ edit(main,
      "Android arguments")
 shutil.copy(legacy4 / "src" / "android.rs", "crates/client/src/android.rs")
 shutil.copy(legacy4 / "src" / "license_pub.hex", "crates/client/src/license_pub.hex")
-shutil.copy(legacy4 / "menu" / "zz_legacy4.iwd", "crates/client/src/zz_legacy4.iwd")
+shutil.copy(legacy4 / "menu" / "legacy_banner.rgba", "crates/client/src/legacy_banner.rgba")
 print("ok  android.rs copied")
 
 # 3. app.rs: the event loop gets the activity, a finger is the mouse, leaving the app stops the game.
@@ -213,9 +213,9 @@ edit("crates/server/src/fire.rs",
      "            if crate::legacy4::explosive(shooter) {\n"
      "                let blast = crate::combat::Blast {\n"
      "                    origin: h.point,\n"
-     "                    radius: 120.0,\n"
-     "                    inner: 150.0,\n"
-     "                    outer: 60.0,\n"
+     "                    radius: 260.0,\n"
+     "                    inner: 300.0,\n"
+     "                    outer: 160.0,\n"
      "                    attacker: Some(shooter),\n"
      "                    inflictor: Some(shooter),\n"
      "                    cone: None,\n"
@@ -250,4 +250,56 @@ edit("crates/client/src/shell.rs",
      "                }\n"
      "                \"statset\" => {\n",
      "unlock all")
+
+# 12. combat.rs: god mode (mod menu, VIP): a player in it takes no damage at all (bullets, blasts, falls).
+edit("crates/server/src/combat.rs",
+     "    pub fn g_damage(&mut self, vm: &mut Vm, target: u16, d: Damage) {\n        let Some(t) = self.ent(target) else { return };\n",
+     "    pub fn g_damage(&mut self, vm: &mut Vm, target: u16, d: Damage) {\n        let Some(t) = self.ent(target) else { return };\n"
+     "        if t.kind == EntKind::Client && crate::legacy4::god(target) {\n"
+     "            return;\n"
+     "        }\n",
+     "god mode")
+
+# 13. console.rs: UNLOCK ALL is the client's own command; the console refused it as unknown.
+edit("crates/client/src/console.rs",
+     '    "actionslot",\n',
+     '    "actionslot",\n    // Legacy 4 mod menu: UNLOCK ALL (shell.rs).\n    "l4unlockall",\n',
+     "unlock all known to the console")
+
+# 14. render/texture.rs: images replaced by name (Android: the Legacy 4 menu background, android.rs menu_image).
+#     Also for images a zone carries inline, which no IWD can cover.
+tex = "crates/render/src/texture.rs"
+edit(tex,
+     "use std::sync::Arc;\n",
+     "use std::sync::Arc;\n\n"
+     "/// Legacy 4: images replaced by name. `make` builds the replacement IWI file, given a reader of the stock images.\n"
+     "pub struct ImageOverride {\n"
+     "    pub names: &'static [&'static str],\n"
+     "    pub make: fn(&str, &dyn Fn(&str) -> Option<Vec<u8>>) -> Option<Vec<u8>>,\n"
+     "}\n\n"
+     "/// Set once at start (the Android build); empty everywhere else.\n"
+     "pub static IMAGE_OVERRIDE: std::sync::OnceLock<ImageOverride> = std::sync::OnceLock::new();\n\n"
+     "fn overridden(name: &str) -> bool {\n"
+     "    IMAGE_OVERRIDE\n"
+     "        .get()\n"
+     "        .is_some_and(|o| o.names.iter().any(|n| n.eq_ignore_ascii_case(name)))\n"
+     "}\n",
+     "image override hook")
+edit(tex,
+     "            Some(d) if !d.data.is_empty() => load_inline(gpu, img),\n",
+     "            Some(d) if !d.data.is_empty() && !overridden(name) => load_inline(gpu, img),\n",
+     "override beats inline images")
+edit(tex,
+     "        let image = match iwi::load_picmip(vfs, name, picmip) {\n",
+     "        let replaced = if overridden(name) {\n"
+     "            let read = |n: &str| vfs.read(&format!(\"images/{n}.iwi\")).ok().flatten();\n"
+     "            IMAGE_OVERRIDE\n"
+     "                .get()\n"
+     "                .and_then(|o| (o.make)(name, &read))\n"
+     "                .and_then(|b| iwi::Image::parse_picmip(&b, 0).ok())\n"
+     "        } else {\n"
+     "            None\n"
+     "        };\n"
+     "        let image = match replaced.map(Ok).unwrap_or_else(|| iwi::load_picmip(vfs, name, picmip)) {\n",
+     "override in the loader")
 print("patch_client: all changes applied")

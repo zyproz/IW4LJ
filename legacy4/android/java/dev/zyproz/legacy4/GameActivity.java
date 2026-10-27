@@ -71,7 +71,37 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             }
             return;
         }
-        overlay = new FrameLayout(this);
+        overlay = new FrameLayout(this) {
+            /** The Legacy menu with a controller: B, Start or the Xbox/PS button close it, A selects, LB/RB change tab. */
+            @Override
+            public boolean dispatchKeyEvent(KeyEvent e) {
+                if (mods != null && mods.getVisibility() == View.VISIBLE) {
+                    int c = e.getKeyCode();
+                    boolean up = e.getAction() == KeyEvent.ACTION_UP;
+                    switch (c) {
+                        case KeyEvent.KEYCODE_BUTTON_MODE:
+                        case KeyEvent.KEYCODE_BUTTON_B:
+                        case KeyEvent.KEYCODE_BUTTON_START:
+                        case KeyEvent.KEYCODE_BACK:
+                            if (up) {
+                                closeMods();
+                            }
+                            return true;
+                        case KeyEvent.KEYCODE_BUTTON_A:
+                            return super.dispatchKeyEvent(new KeyEvent(e.getAction(), KeyEvent.KEYCODE_DPAD_CENTER));
+                        case KeyEvent.KEYCODE_BUTTON_L1:
+                        case KeyEvent.KEYCODE_BUTTON_R1:
+                            if (up) {
+                                mods.nextTab(c == KeyEvent.KEYCODE_BUTTON_R1 ? 1 : -1);
+                            }
+                            return true;
+                        default:
+                            break;
+                    }
+                }
+                return super.dispatchKeyEvent(e);
+            }
+        };
         pad = new TouchPad(this, this::openMods);
         overlay.addView(pad, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
@@ -136,6 +166,8 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
         // Typing an address or a name needs the keyboard: the overlay takes the focus while the menu is open.
         overlayParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         getWindowManager().updateViewLayout(overlay, overlayParams);
+        // A controller moves through the menu from its first button.
+        mods.post(mods::focusFirst);
     }
 
     private void closeMods() {
@@ -158,6 +190,10 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             pad.aimToggle = prefs.getBoolean("aim_toggle", true);
             pad.invalidate();
         }
+        // The controller's turn speed: the game's own gamepad rates, in degrees per second at full stick.
+        int level = prefs.getInt("stick_sens", 5);
+        int yaw = ModMenu.stickYaw(level);
+        command("seta in_gamepad_yawrate " + yaw + "; seta in_gamepad_pitchrate " + (yaw * 7 / 10));
     }
 
     /** A controller is in use: the touch buttons hide until the screen is touched again. */
@@ -408,6 +444,13 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         boolean padKey = KeyEvent.isGamepadButton(code)
                 || (isPad(event.getSource()) && code >= KeyEvent.KEYCODE_DPAD_UP && code <= KeyEvent.KEYCODE_DPAD_RIGHT);
+        if (code == KeyEvent.KEYCODE_BUTTON_MODE) {
+            // The Xbox / PlayStation button opens the Legacy menu, as in Legacy Warfare and Legacy Ops.
+            if (down && event.getRepeatCount() == 0) {
+                openMods();
+            }
+            return true;
+        }
         if (padKey) {
             controllerUsed();
             if (event.getRepeatCount() == 0) {

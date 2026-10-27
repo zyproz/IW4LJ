@@ -27,6 +27,26 @@ pub fn explosive(slot: u16) -> bool {
     EXPLOSIVE.lock().unwrap_or_else(|e| e.into_inner()).contains(&slot)
 }
 
+/// Players who take no damage at all: bullets, blasts, falls (read by `g_damage`). It lasts across deaths and rounds.
+static GOD: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+
+/// Whether client `slot` is in god mode.
+pub fn god(slot: u16) -> bool {
+    GOD.lock().unwrap_or_else(|e| e.into_inner()).contains(&slot)
+}
+
+/// Adds or removes `slot` in a list; returns whether it is in now.
+fn toggle(list: &Mutex<Vec<u16>>, slot: u16) -> bool {
+    let mut list = list.lock().unwrap_or_else(|e| e.into_inner());
+    if list.contains(&slot) {
+        list.retain(|s| *s != slot);
+        false
+    } else {
+        list.push(slot);
+        true
+    }
+}
+
 impl Game {
     /// Carries out one Legacy 4 command for client `slot`; returns what to tell the player.
     pub fn legacy4_command(&mut self, slot: u16, verb: &str, host: bool) -> String {
@@ -65,13 +85,7 @@ impl Game {
                 self.set_client_contents(slot);
                 format!("Noclip {}", if on { "ON" } else { "OFF" })
             }
-            "l4god" => match self.ent_mut(slot) {
-                Some(e) => {
-                    e.flags ^= 8;
-                    format!("God mode {}", if e.flags & 8 != 0 { "ON" } else { "OFF" })
-                }
-                None => String::new(),
-            },
+            "l4god" => format!("God mode {}", if toggle(&GOD, slot) { "ON" } else { "OFF" }),
             "l4bothere" => {
                 let bot = self
                     .connected_clients()
@@ -86,17 +100,10 @@ impl Game {
                     None => "No bot in the game: add one in the BOTS tab".to_owned(),
                 }
             }
-            "l4explosive" => {
-                let mut list = EXPLOSIVE.lock().unwrap_or_else(|e| e.into_inner());
-                let on = if list.contains(&slot) {
-                    list.retain(|s| *s != slot);
-                    false
-                } else {
-                    list.push(slot);
-                    true
-                };
-                format!("Explosive bullets {}", if on { "ON" } else { "OFF" })
-            }
+            "l4explosive" => format!(
+                "Explosive bullets {}",
+                if toggle(&EXPLOSIVE, slot) { "ON" } else { "OFF" }
+            ),
             "l4botfreeze" | "l4botmove" => {
                 let freeze = verb == "l4botfreeze";
                 let bots: Vec<u16> = self

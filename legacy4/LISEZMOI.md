@@ -59,10 +59,16 @@ Le module est partagé par toutes les applis Legacy Mobile :
 - Balles explosives (VIP, hôte) : `l4explosive`, explosion à l'impact (`patch_client.py` étape 10, `fire.rs`).
 - UNLOCK ALL (VIP, onglet ACCOUNT) : `l4unlockall`, mêmes déblocages que le profil du harness (`profile::unlocked_stats`).
 
-## Menu aux couleurs de Legacy 4 (0.7)
-`menu/make_menu_iwd.py` fabrique `menu/zz_legacy4.iwd` à partir de la bannière : `bg_back` = bannière,
-`bg_blur_back` = bannière floutée, et le soldat (`bg_front`), les brumes (`bg_fogscroll`) et le logo CoD4
-(`main_back_top_mp_english`) deviennent transparents. Le jeu l'écrit dans `cod4/main` au lancement s'il manque ;
-supprimer ce fichier rend le menu d'origine (jusqu'au lancement suivant).
-- 0.8 : le fichier est écrit sous le nom `iw_zz_legacy4.iwd` : comme le jeu d'origine, le moteur n'accepte dans `main`
-  que les `.iwd` en `iw_*`, et ignorait `zz_legacy4.iwd` (supprimé au lancement).
+## Menu aux couleurs de Legacy 4 (0.7 à 0.9)
+0.7/0.8 passaient par un `.iwd` : ignoré (nom refusé dans `main`, puis images aussi intégrées aux `.ff`). Depuis 0.9,
+le chargeur de textures (`render/src/texture.rs`, `IMAGE_OVERRIDE`, étape 14) demande à `android.rs` (`menu_image`) les
+couches du fond : `bg_back` = bannière (`menu/legacy_banner.rgba`, 1024x576 RGBA), `bg_blur_back` = bannière sombre,
+soldat, brumes et logo CoD4 transparents. `journal.txt` note chaque image remplacée. Les anciens `.iwd` sont supprimés.
+
+## 0.9
+- God mode : liste de joueurs côté serveur, tous les dégâts ignorés dans `g_damage` (balles, explosions, chute),
+  même après une mort (étape 12). L'ancien drapeau 8 n'était pas le bon (FL_GODMODE = 1) et ne protégeait pas les joueurs.
+- UNLOCK ALL : `l4unlockall` était refusé par la console (« Unknown command ») ; ajouté à ses commandes (étape 13).
+- Balles explosives : rayon 260, 300 de dégâts au centre, 160 au bord.
+- Manette : sensibilité du stick 1 à 10 dans CONTROLS (`in_gamepad_yawrate` / `pitchrate`) ; bouton Xbox/PS = menu
+  Legacy ; dans le menu : croix/stick pour se déplacer, A valider, B/Start/Xbox fermer, LB/RB changer d'onglet.

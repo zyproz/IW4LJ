@@ -109,27 +109,90 @@ pub fn touch_as_mouse(t: &Touch) -> Vec<WindowEvent> {
     }
 }
 
-/// The Legacy 4 main menu (legacy4/menu/make_menu_iwd.py): the banner instead of the CoD4 background. IWDs load in
-/// name order and the last one wins, and `main` only takes `iw_*` names (as the original does), so
-/// `iw_zz_legacy4.iwd` covers the stock `iw_00`..`iw_13` images. It is (re)written when missing or different, and
-/// never touches the player's own files.
-static MENU_IWD: &[u8] = include_bytes!("zz_legacy4.iwd");
+/// The Legacy 4 main menu: the banner instead of the CoD4 background. The menus draw their background from layers
+/// (`bg_back` the scene, `bg_front` the soldier, `bg_fogscroll` the fog, `main_back_top_mp_english` the CoD4 logo,
+/// `bg_blur_*` the blurred backdrop of the other menus). The texture loader asks [`menu_image`] for these names
+/// (render/texture.rs, `IMAGE_OVERRIDE`), so the stock images stay untouched on disk.
+static BANNER_RGBA: &[u8] = include_bytes!("legacy_banner.rgba");
+const BANNER_W: usize = 1024;
+const BANNER_H: usize = 576;
 
+const MENU_IMAGES: &[&str] = &[
+    "bg_back",
+    "bg_front",
+    "bg_front2",
+    "bg_fogscroll",
+    "bg_fogscrollthin",
+    "main_back_top_mp_english",
+    "bg_blur_back",
+    "bg_blur_front",
+    "bg_blur_fogscroll",
+];
+
+/// An uncompressed IWI: BGRA8 (format 1), no mipmaps (flag 0x02).
+fn iwi_bgra(w: usize, h: usize, rgba: &[u8]) -> Vec<u8> {
+    let total = (28 + w * h * 4) as u32;
+    let mut v = Vec::with_capacity(total as usize);
+    v.extend_from_slice(b"IWi\x06");
+    v.extend_from_slice(&[1, 0x02]);
+    for d in [w as u16, h as u16, 1] {
+        v.extend_from_slice(&d.to_le_bytes());
+    }
+    for _ in 0..4 {
+        v.extend_from_slice(&total.to_le_bytes());
+    }
+    for p in rgba.chunks_exact(4) {
+        v.extend_from_slice(&[p[2], p[1], p[0], p[3]]);
+    }
+    v
+}
+
+/// The banner at `w`x`h` (nearest pixel), its colours scaled by `light`.
+fn banner(w: usize, h: usize, light: f32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(w * h * 4);
+    for y in 0..h {
+        let sy = (y * BANNER_H / h).min(BANNER_H - 1);
+        for x in 0..w {
+            let sx = (x * BANNER_W / w).min(BANNER_W - 1);
+            let i = (sy * BANNER_W + sx) * 4;
+            let p = &BANNER_RGBA[i..i + 4];
+            out.extend_from_slice(&[
+                (f32::from(p[0]) * light) as u8,
+                (f32::from(p[1]) * light) as u8,
+                (f32::from(p[2]) * light) as u8,
+                255,
+            ]);
+        }
+    }
+    out
+}
+
+/// The replacement for one menu image, as an IWI file; `None` keeps the stock image.
+fn menu_image(name: &str, _read: &dyn Fn(&str) -> Option<Vec<u8>>) -> Option<Vec<u8>> {
+    let image = match name.to_ascii_lowercase().as_str() {
+        "bg_back" => iwi_bgra(BANNER_W, BANNER_H, &banner(BANNER_W, BANNER_H, 1.0)),
+        "bg_blur_back" => iwi_bgra(512, 288, &banner(512, 288, 0.45)),
+        n if MENU_IMAGES.contains(&n) => iwi_bgra(4, 4, &[0; 64]),
+        _ => return None,
+    };
+    eprintln!("Legacy 4: menu image {name} replaced");
+    Some(image)
+}
+
+/// Hands the texture loader the menu images, and removes the IWDs 0.7 and 0.8 wrote (an extra IWD in `main` would
+/// differ from other players' installs in multiplayer).
 fn install_menu_images(install: &Path) {
-    let Some(main) = fs::read_dir(install).ok().and_then(|rd| {
+    let _ = render::texture::IMAGE_OVERRIDE.set(render::texture::ImageOverride {
+        names: MENU_IMAGES,
+        make: menu_image,
+    });
+    if let Some(main) = fs::read_dir(install).ok().and_then(|rd| {
         rd.flatten()
             .find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case("main") && e.path().is_dir())
             .map(|e| e.path())
-    }) else {
-        return;
-    };
-    // 0.7 wrote it under a name `main` ignores.
-    let _ = fs::remove_file(main.join("zz_legacy4.iwd"));
-    let target = main.join("iw_zz_legacy4.iwd");
-    if fs::metadata(&target).map(|m| m.len()).ok() != Some(MENU_IWD.len() as u64)
-        && let Err(e) = fs::write(&target, MENU_IWD)
-    {
-        eprintln!("cannot write {}: {e}", target.display());
+    }) {
+        let _ = fs::remove_file(main.join("zz_legacy4.iwd"));
+        let _ = fs::remove_file(main.join("iw_zz_legacy4.iwd"));
     }
 }
 
@@ -174,7 +237,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.8: starting with {args:?}");
+    eprintln!("Legacy 4 0.9: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
