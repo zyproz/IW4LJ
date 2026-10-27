@@ -19,3 +19,12 @@ Dossier : `Android/media/dev.zyproz.legacy4/`
 ## Limites de la 0.1
 - Pas encore de manette ni de contrôles tactiles en jeu : le doigt sert seulement de souris dans les menus.
 - Quitter l'appli (bouton accueil) arrête le jeu : il faut le relancer.
+
+## Steam (0.2)
+Quand les fichiers manquent, l'écran de lancement propose de se connecter à Steam (QR code ou compte).
+Le module est partagé par toutes les applis Legacy Mobile :
+- `android/java/dev/zyproz/legacy/steam/SteamActivity.java` : connexion et téléchargement (JavaSteam).
+  Rien n'est enregistré : ni mot de passe, ni jeton Steam. Journal : `steam-log.txt` à côté du dossier du jeu.
+- `steam/` : récupère JavaSteam et ses dépendances pendant le build (`build.gradle.kts`, `prepare_jars.py`).
+- L'appli dit quel jeu prendre avec des « extras » : `app_id` (CoD4 = 7940), `target_dir`, `files` (expressions
+  comme `main/.*`), `check_dirs`, `mode` (`qr` ou `account`), `next_activity`.

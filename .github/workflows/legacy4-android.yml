@@ -1,7 +1,7 @@
-# Legacy 4 (CoD4 sur Android), version 0.1 : compile le moteur open source jeiang/cod4-decomp (GPL-3.0)
+# Legacy 4 (CoD4 sur Android), version 0.2 : compile le moteur open source jeiang/cod4-decomp (GPL-3.0)
 # pour Android, ajoute l'entrée Android de legacy4/ et assemble un APK signé.
 # Lancer : gh workflow run legacy4-android.yml -R zyproz/IW4LJ
-# Résultat : artifact "Legacy4-0.1" (l'APK, plus build.log si ça échoue).
+# Résultat : artifact "Legacy4-0.2" (l'APK, plus build.log si ça échoue).
 
 name: Legacy 4 - APK Android
 
@@ -76,6 +76,17 @@ jobs:
           cargo build -p client --lib --release --target aarch64-linux-android --message-format short 2>&1 | tee ../build.log
           ls -l target/aarch64-linux-android/release/libcod4e_android.so
 
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Bibliothèques Steam (JavaSteam, téléchargement depuis le compte du joueur)
+        run: |
+          set -euo pipefail
+          gradle -p legacy4/steam collectDeps collectAar --no-daemon -q
+          ls legacy4/steam/build/deps
+          python3 legacy4/steam/prepare_jars.py legacy4/steam/build/deps legacy4/steam/build/aar build/steamjars build/steamres
+
       - name: Clé de signature (réutilisée d'un build à l'autre)
         uses: actions/cache@v4
         with:
@@ -94,10 +105,15 @@ jobs:
           B="$PWD/build"
           mkdir -p "$B/classes" "$B/dex" "$B/stage/lib/arm64-v8a" ks
 
-          javac -source 17 -target 17 -classpath "$JAR" -d "$B/classes" \
-            "$L"/android/java/dev/zyproz/legacy4/*.java
+          CP="$JAR:$(ls "$B"/steamjars/*.jar | tr '\n' ':')"
+          javac -source 17 -target 17 -classpath "$CP" -d "$B/classes" \
+            $(find "$L/android/java" -name '*.java')
           jar cf "$B/classes.jar" -C "$B/classes" .
-          "$BT/d8" --lib "$JAR" --min-api 31 --output "$B/dex" "$B/classes.jar"
+          # Many libraries: d8 writes several classes*.dex files (multidex, Android 5+).
+          export _JAVA_OPTIONS="-Xmx6g"
+          "$BT/d8" --release --lib "$JAR" --min-api 31 --output "$B/dex" "$B/classes.jar" "$B"/steamjars/*.jar
+          unset _JAVA_OPTIONS
+          ls -l "$B/dex"
 
           "$BT/aapt2" compile --dir "$L/res" -o "$B/res.zip"
           "$BT/aapt2" link -o "$B/base.apk" -I "$JAR" \
@@ -107,8 +123,12 @@ jobs:
           "$BIN/llvm-strip" --strip-all -o "$B/stage/lib/arm64-v8a/libcod4e_android.so" "$SO"
           cp "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
             "$B/stage/lib/arm64-v8a/"
-          cp "$B/dex/classes.dex" "$B/stage/"
-          (cd "$B/stage" && zip -0 -r ../base.apk classes.dex lib)
+          cp "$B"/dex/classes*.dex "$B/stage/"
+          # Zstandard for Steam chunks, built for Android (from the zstd-jni .aar).
+          cp legacy4/steam/build/aar/jni/arm64-v8a/*.so "$B/stage/lib/arm64-v8a/"
+          (cd "$B/stage" && zip -0 -r ../base.apk classes*.dex lib)
+          # Files the Steam libraries read at run time.
+          (cd "$B/steamres" && zip -r -q ../base.apk .)
           "$BT/zipalign" -p -f 4 "$B/base.apk" "$B/aligned.apk"
 
           if [ ! -f ks/legacy4.keystore ]; then
@@ -132,7 +152,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Legacy4-0.1
+          name: Legacy4-0.2
           path: |
             build/Legacy4-*.apk
             build.log

@@ -62,16 +62,18 @@ public class LaunchActivity extends Activity {
 
         String text;
         if (!ready) {
-            text = "LEGACY 4 - version 0.1\n\n"
-                    + "Copy the Call of Duty 4 (PC, 1.7) folders main and zone, and the file localization.txt, into:\n\n"
-                    + game.getAbsolutePath() + "\n\n"
-                    + "Then open the app again.";
+            text = "LEGACY 4 - version 0.2\n\n"
+                    + "The Call of Duty 4 files are missing. Two ways to get them:\n\n"
+                    + "1. STEAM: if your Steam account owns Call of Duty 4 (2007), sign in below. Only the files the"
+                    + " game needs are downloaded (about 7 GB, use Wi-Fi). Nothing is saved: no password, no token.\n\n"
+                    + "2. BY HAND: copy the folders main and zone and the file localization.txt of Call of Duty 4"
+                    + " (PC, 1.7) into:\n" + game.getAbsolutePath() + "\nthen tap CHECK AGAIN.";
         } else {
             String why = crashText.isEmpty()
                     ? "The last start was closed by Android or crashed (no message).\n\nLast lines of journal.txt:\n"
                             + tail(read(journal), 40)
                     : crashText;
-            text = "LEGACY 4 - version 0.1\n\nThe last start stopped:\n\n" + why
+            text = "LEGACY 4 - version 0.2\n\nThe last start stopped:\n\n" + why
                     + "\n\nSend crash.txt and journal.txt from:\n" + media.getAbsolutePath();
         }
 
@@ -97,18 +99,43 @@ public class LaunchActivity extends Activity {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setBackgroundColor(Color.BLACK);
-        if (banner != 0) {
-            ImageView top = new ImageView(this);
-            top.setAdjustViewBounds(true);
-            top.setImageResource(banner);
-            box.addView(top);
+        // The message comes first: in landscape the banner alone fills the screen and hid it.
+        box.addView(view);
+        if (!ready) {
+            box.addView(steamButton("STEAM: SIGN IN WITH QR CODE", "qr", game));
+            box.addView(steamButton("STEAM: SIGN IN WITH ACCOUNT", "account", game));
         }
         box.addView(go);
-        box.addView(view);
+        if (banner != 0) {
+            ImageView bottom = new ImageView(this);
+            bottom.setAdjustViewBounds(true);
+            bottom.setImageResource(banner);
+            box.addView(bottom);
+        }
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(Color.BLACK);
         scroll.addView(box);
         setContentView(scroll);
+    }
+
+    /** Opens the shared Legacy Mobile Steam screen for Call of Duty 4 (Steam app 7940). */
+    private Button steamButton(String label, String mode, File game) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setOnClickListener(v -> {
+            Intent steam = new Intent(this, dev.zyproz.legacy.steam.SteamActivity.class);
+            steam.putExtra("app_id", 7940);
+            steam.putExtra("game_name", "Call of Duty 4");
+            steam.putExtra("target_dir", game.getAbsolutePath());
+            steam.putExtra("files", new String[] {"main/.*", "zone/.*", "localization\\.txt"});
+            steam.putExtra("check_dirs", new String[] {"main", "zone"});
+            steam.putExtra("language", "english");
+            steam.putExtra("mode", mode);
+            steam.putExtra("next_activity", LaunchActivity.class.getName());
+            startActivity(steam);
+            finish();
+        });
+        return b;
     }
 
     private void startGame() {
