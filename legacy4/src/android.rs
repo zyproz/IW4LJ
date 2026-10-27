@@ -124,6 +124,8 @@ const MENU_IMAGES: &[&str] = &[
     "bg_fogscroll",
     "bg_fogscrollthin",
     "main_back_top_mp_english",
+    // The "Call of Duty 4 Modern Warfare" logo of the main menu.
+    "cod4",
     "bg_blur_back",
     "bg_blur_front",
     "bg_blur_fogscroll",
@@ -237,7 +239,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.10: starting with {args:?}");
+    eprintln!("Legacy 4 0.11: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 

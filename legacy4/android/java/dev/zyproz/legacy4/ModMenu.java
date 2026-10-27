@@ -272,8 +272,9 @@ public class ModMenu extends LinearLayout {
         row(enter);
         if (tier > 0) {
             hint("VIP:");
-            row(cmd("UNLOCK ALL", "l4unlockall"));
-            hint("Rank 55, every weapon, perk and attachment, Create a Class. Takes effect at the next game.");
+            row(cmd("UNLOCK ALL", "l4unlockall; l4unlock"));
+            hint("Rank 55, every weapon, perk and attachment, Create a Class. Best used in a game:"
+                    + " it shows from the next map.");
         }
     }
 

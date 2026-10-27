@@ -163,7 +163,7 @@ edit("crates/client/src/console.rs",
      '    "where",\n];\n',
      '    "where",\n'
      '    // Legacy 4 mod menu (server side: crates/server/src/legacy4.rs).\n'
-     '    "l4save",\n    "l4load",\n    "l4noclip",\n    "l4god",\n    "l4bothere",\n    "l4botfreeze",\n    "l4botmove",\n    "l4explosive",\n];\n',
+     '    "l4save",\n    "l4load",\n    "l4noclip",\n    "l4god",\n    "l4bothere",\n    "l4botfreeze",\n    "l4botmove",\n    "l4explosive",\n    "l4unlock",\n];\n',
      "trickshot commands sent to the server")
 
 # 8. Server: the trickshot commands themselves.
@@ -319,4 +319,36 @@ edit("crates/client/src/netplay.rs",
      "            )\n"
      "        {\n            self.want_weapon = None;\n        }\n",
      "weapon switch cancel")
+
+# 16. Diagnostics for the bot that would not die (journal.txt): every bullet that reaches a bot, and why the server
+#     refused to hurt a client, if it did.
+edit("crates/server/src/fire.rs",
+     "            if !h.damageable {\n                continue;\n            }\n",
+     "            if self.client(h.target).is_some_and(|c| c.bot) {\n"
+     "                tracing::info!(\n"
+     "                    shooter,\n"
+     "                    bot = h.target,\n"
+     "                    damage = h.damage,\n"
+     "                    damageable = h.damageable,\n"
+     "                    \"legacy4: a bullet reached a bot\"\n"
+     "                );\n"
+     "            }\n"
+     "            if !h.damageable {\n                continue;\n            }\n",
+     "log bullets on bots")
+edit("crates/server/src/combat.rs",
+     "            || c.ps.pm_type == PmType::Dead\n        {\n            return;\n        }\n",
+     "            || c.ps.pm_type == PmType::Dead\n        {\n"
+     "            if c.bot {\n"
+     "                tracing::info!(\n"
+     "                    bot = target,\n"
+     "                    takes,\n"
+     "                    damage = d.damage,\n"
+     "                    noclip = c.noclip,\n"
+     "                    ufo = c.ufo,\n"
+     "                    dead = c.ps.pm_type == PmType::Dead,\n"
+     "                    \"legacy4: damage to a bot refused\"\n"
+     "                );\n"
+     "            }\n"
+     "            return;\n        }\n",
+     "log refused damage to bots")
 print("patch_client: all changes applied")

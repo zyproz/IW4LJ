@@ -79,3 +79,11 @@ soldat, brumes et logo CoD4 transparents. `journal.txt` note chaque image rempla
 - God mode et balles explosives ne s'appliquent jamais à un bot (listes par place de joueur côté serveur).
 - À savoir : en noclip, comme dans le CoD4 d'origine, on ne tire pas (pas d'arme dans `PmType::Noclip`) et on ne
   prend pas de dégâts. Sortir du noclip avant de tirer.
+
+## 0.11
+- UNLOCK ALL : le serveur d'une partie garde sa copie des stats du joueur d'une map à l'autre et la renvoie, ce qui
+  annulait le déblocage fait côté client. Nouvelle commande serveur `l4unlock` : mêmes stats posées côté serveur
+  (comme `setStat` des scripts), chaque changement renvoyé au client et sauvé dans le profil. Visible à la map suivante.
+- Logo « Call of Duty 4 » du menu (image `cod4`) masqué.
+- Diagnostic du bot increvable : `journal.txt` note chaque balle qui atteint un bot (« legacy4: a bullet reached a
+  bot ») et chaque dégât refusé à un bot avec la raison (« legacy4: damage to a bot refused »).

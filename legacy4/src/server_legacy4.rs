@@ -76,7 +76,7 @@ impl Game {
                     None => "No saved position yet".to_owned(),
                 }
             }
-            _ if !host => "Only the host can do this".to_owned(),
+            _ if !host && verb != "l4unlock" => "Only the host can do this".to_owned(),
             "l4noclip" => {
                 let on = match self.client_mut(slot) {
                     Some(c) => {
@@ -102,6 +102,31 @@ impl Game {
                     }
                     None => "No bot in the game: add one in the BOTS tab".to_owned(),
                 }
+            }
+            "l4unlock" => {
+                // UNLOCK ALL from inside a game: the server keeps its own copy of the player's stats from map to map
+                // and sends it back, so unlocking only in the client's profile was undone. Set here like the
+                // scripts' `setStat`, each change is also sent to the client, which saves it in the profile.
+                let mut changed = 0;
+                let wanted = (101..=200)
+                    .chain([210, 220, 230, 240, 257, 258, 260])
+                    .chain(270..=279)
+                    .map(|i| (i, 1))
+                    .chain([(2301, 1_000_000)]);
+                for (i, v) in wanted {
+                    let Some(c) = self.client_mut(slot) else { break };
+                    let old = c.stats.get(&i).copied().unwrap_or(0);
+                    let new = if i == 2301 { old.max(v) } else if old == 0 { v } else { old };
+                    if new != old {
+                        c.stats.insert(i, new);
+                        self.send(
+                            crate::ui::Dest::Client(slot),
+                            net::ui::ServerCmd::Stat { index: i, value: new },
+                        );
+                        changed += 1;
+                    }
+                }
+                format!("Everything unlocked ({changed} stats). Rank and unlocks show from the next map.")
             }
             "l4explosive" => format!(
                 "Explosive bullets {}",
