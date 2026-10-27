@@ -222,6 +222,11 @@ public class LaunchActivity extends Activity {
         body.setText(fr
             ? "Cette application ne contient pas Call of Duty : Modern Warfare 2. Il te faut les dossiers "
                 + "\u00AB zone \u00BB et \u00AB main \u00BB de ta propre copie du jeu PC (2009).\n\n"
+                + "AVEC STEAM : si ton compte Steam poss\u00E8de Modern Warfare 2 (2009), connecte-toi avec un des "
+                + "deux boutons STEAM en bas. Seuls les fichiers multijoueur dont le jeu a besoin sont "
+                + "t\u00E9l\u00E9charg\u00E9s (plusieurs Go, utilise le Wi-Fi). Rien n'est enregistr\u00E9 : ni mot de passe, "
+                + "ni jeton Steam.\n\n"
+                + "\u00C0 LA MAIN :\n"
                 + "1. Sur un PC o\u00F9 le jeu est install\u00E9 (Steam : clic droit sur le jeu > G\u00E9rer > Parcourir "
                 + "les fichiers locaux), copie les dossiers \u00AB zone \u00BB et \u00AB main \u00BB sur ton t\u00E9l\u00E9phone.\n\n"
                 + "2. Touche OUVRIR LE DOSSIER. Le dossier \u00AB mw2 \u00BB est cr\u00E9\u00E9 s'il n'existe pas.\n\n"
@@ -232,6 +237,10 @@ public class LaunchActivity extends Activity {
                 + "le jeu d\u00E9marre tout de suite."
             : "This app does not contain Call of Duty: Modern Warfare 2. You need the 'zone' and 'main' "
                 + "folders of your own copy of the PC game (2009).\n\n"
+                + "WITH STEAM: if your Steam account owns Modern Warfare 2 (2009), sign in with one of the "
+                + "two STEAM buttons below. Only the multiplayer files the game needs are downloaded "
+                + "(several GB, use Wi-Fi). Nothing is saved: no password, no Steam token.\n\n"
+                + "BY HAND:\n"
                 + "1. On a PC with the game installed (Steam: right-click the game > Manage > Browse "
                 + "local files), copy the 'zone' and 'main' folders to your phone.\n\n"
                 + "2. Tap OPEN THE FOLDER. The 'mw2' folder is created if it is not there yet.\n\n"
@@ -256,6 +265,15 @@ public class LaunchActivity extends Activity {
         status.setText(setupStatus(fr));
         root.addView(status);
 
+        // Only here, with the files missing: players who already have them never see these.
+        LinearLayout steam = new LinearLayout(this);
+        steam.setOrientation(LinearLayout.HORIZONTAL);
+        steam.setGravity(Gravity.CENTER);
+        steam.addView(steamButton(fr ? "STEAM : CONNEXION PAR QR CODE" : "STEAM: SIGN IN WITH QR CODE", "qr"));
+        steam.addView(steamButton(fr ? "STEAM : CONNEXION AVEC LE COMPTE" : "STEAM: SIGN IN WITH ACCOUNT",
+            "account"));
+        root.addView(steam);
+
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.CENTER);
@@ -272,6 +290,34 @@ public class LaunchActivity extends Activity {
         }));
         root.addView(buttons);
         setContentView(root);
+    }
+
+    /**
+     * Opens the shared Legacy Mobile Steam screen for Modern Warfare 2 multiplayer (Steam app 10190).
+     * It downloads into the same `mw2` folder the engine reads, and only what the engine opens:
+     * the `.iwd` archives of `main/` and the multiplayer zones of `zone/` (`*_mp.ff` and the `mp_*`
+     * maps, in `english/` and `dlc/`). Single-player zones and the `main/video` cinematics are skipped.
+     */
+    private Button steamButton(String label, String mode) {
+        return button(label, v -> {
+            File mw2 = new File(baseDir(), "mw2");
+            mw2.mkdirs();
+            Intent steam = new Intent(this, dev.zyproz.legacy.steam.SteamActivity.class);
+            steam.putExtra("app_id", 10190);
+            steam.putExtra("game_name", "Modern Warfare 2");
+            steam.putExtra("target_dir", mw2.getAbsolutePath());
+            steam.putExtra("files", new String[] {
+                "main/[^/]+\\.iwd",
+                "zone/(.+/)?[^/]+_mp\\.ff",
+                "zone/(.+/)?mp_[^/]+\\.ff",
+            });
+            steam.putExtra("check_dirs", new String[] {"main", "zone"});
+            steam.putExtra("language", "english");
+            steam.putExtra("mode", mode);
+            steam.putExtra("next_activity", LaunchActivity.class.getName());
+            startActivity(steam);
+            finish();
+        });
     }
 
     /** Whether the folder the app reads the game from holds one. */

@@ -29,7 +29,25 @@ adb install -r IW4LJ.apk
 **Never `adb uninstall`** and don't uninstall the app from the phone to reinstall:
 that deletes the app's data folder. `install -r` keeps it.
 
-## 3. Copy the game
+## 3. Get the game files
+
+### From Steam (Legacy Warfare 3.2 and later)
+
+When the files are missing, the launch screen shows two buttons:
+**STEAM: SIGN IN WITH QR CODE** and **STEAM: SIGN IN WITH ACCOUNT**. Sign in with the Steam
+account that owns *Call of Duty: Modern Warfare 2 (2009)*; the app then downloads Steam app
+10190 (multiplayer) straight into `Android/media/dev.iw4j.iw4l/mw2/`. Only what the engine
+reads is downloaded:
+
+- `main/*.iwd` (textures, sounds; `main/video` cinematics are skipped)
+- `zone/**/*_mp.ff` and `zone/**/mp_*.ff` (English multiplayer zones and maps, plus the
+  Stimulus/Resurgence map packs in `zone/dlc/` if the account owns them)
+
+Nothing is saved: no password, no Steam token. The log of the last attempt is
+`Android/media/dev.iw4j.iw4l/steam-log.txt`. Players who already have the files never see
+these buttons, and nothing is moved.
+
+### By hand
 
 Open the app once so it creates its folder, then put a `mw2` folder (containing
 `zone/` and `main/` from your MW2 install) here — by USB cable and a file manager

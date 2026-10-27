@@ -43,7 +43,7 @@ jobs:
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;28.2.13676358"
+          "$SDKM" "platforms;android-34" "build-tools;36.0.0" "ndk;28.2.13676358"
 
       - name: Compiler la bibliothèque Rust
         working-directory: IW4LJ-Android
@@ -63,6 +63,19 @@ jobs:
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android31-clang"
           cargo build -p iw4l-android --profile play --target aarch64-linux-android
 
+      # Steam (shared Legacy Mobile screen, same steps as Legacy 4): JavaSteam and what it uses.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Bibliothèques Steam (JavaSteam, téléchargement depuis le compte du joueur)
+        run: |
+          set -euo pipefail
+          S="IW4LJ-Android/crates/android/steam"
+          gradle -p "$S" collectDeps collectAar --no-daemon -q
+          ls "$S/build/deps"
+          python3 "$S/prepare_jars.py" "$S/build/deps" "$S/build/aar" build/steamjars build/steamres
+
       - name: Clé de signature (réutilisée d'un build à l'autre)
         uses: actions/cache@v4
         with:
@@ -74,17 +87,28 @@ jobs:
           set -euo pipefail
           NDK="$ANDROID_HOME/ndk/28.2.13676358"
           BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          BT="$ANDROID_HOME/build-tools/34.0.0"
+          BT="$ANDROID_HOME/build-tools/36.0.0"
           JAR="$ANDROID_HOME/platforms/android-34/android.jar"
           C="IW4LJ-Android/crates/android"
           SO="IW4LJ-Android/target/aarch64-linux-android/play/libiw4l_android.so"
           B="$PWD/build"
           mkdir -p "$B/classes" "$B/dex" "$B/stage/lib/arm64-v8a" ks
 
-          javac -source 17 -target 17 -classpath "$JAR" -d "$B/classes" \
-            "$C"/android/java/dev/iw4j/iw4l/*.java
+          # The game's screens plus the shared Steam screen (dev/zyproz/legacy/steam), against the Steam jars.
+          CP="$JAR:$(ls "$B"/steamjars/*.jar | tr '\n' ':')"
+          javac -source 17 -target 17 -classpath "$CP" -d "$B/classes" \
+            $(find "$C/android/java" -name '*.java')
           jar cf "$B/classes.jar" -C "$B/classes" .
-          "$BT/d8" --lib "$JAR" --min-api 31 --output "$B/dex" "$B/classes.jar"
+          # Many libraries: d8 writes several classes*.dex files (multidex, Android 5+).
+          # Its full report goes into the artifact (d8.log): a failure shows only one line on GitHub.
+          export _JAVA_OPTIONS="-Xmx6g"
+          if ! "$BT/d8" --release --lib "$JAR" --min-api 31 --output "$B/dex" "$B/classes.jar" "$B"/steamjars/*.jar \
+              > "$B/d8.log" 2>&1; then
+            cat "$B/d8.log"
+            exit 1
+          fi
+          unset _JAVA_OPTIONS
+          ls -l "$B/dex"
 
           "$BT/aapt2" compile --dir "$C/res" -o "$B/res.zip"
           "$BT/aapt2" link -o "$B/base.apk" -I "$JAR" \
@@ -94,10 +118,14 @@ jobs:
           "$BIN/llvm-strip" --strip-all -o "$B/stage/lib/arm64-v8a/libiw4l_android.so" "$SO"
           cp "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
             "$B/stage/lib/arm64-v8a/"
-          cp "$B/dex/classes.dex" "$B/stage/"
+          cp "$B"/dex/classes*.dex "$B/stage/"
+          # Zstandard for Steam chunks, built for Android (from the zstd-jni .aar).
+          cp IW4LJ-Android/crates/android/steam/build/aar/jni/arm64-v8a/*.so "$B/stage/lib/arm64-v8a/"
 
           # Bibliothèques stockées sans compression, comme dans package.ps1.
-          (cd "$B/stage" && zip -0 -r ../base.apk classes.dex lib)
+          (cd "$B/stage" && zip -0 -r ../base.apk classes*.dex lib)
+          # Files the Steam libraries read at run time.
+          (cd "$B/steamres" && zip -r -q ../base.apk .)
           "$BT/zipalign" -p -f 4 "$B/base.apk" "$B/aligned.apk"
 
           if [ ! -f ks/iw4l.keystore ]; then
@@ -116,7 +144,10 @@ jobs:
           ls -l "$OUT"
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: IW4LJ-fresh-build
-          path: build/Legacy-Warfare-*.apk
-          if-no-files-found: error
+          path: |
+            build/Legacy-Warfare-*.apk
+            build/d8.log
+          if-no-files-found: warn
