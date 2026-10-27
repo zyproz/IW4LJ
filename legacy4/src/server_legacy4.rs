@@ -154,3 +154,164 @@ impl Game {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Final killcam (Search and Destroy). The original CoD4 has none; this one is made by the server alone, with the
+// history the normal killcam already replays (`archive.rs`): when a kill leaves the victim's team with nobody alive,
+// every person in the game (not the bots) watches that kill again through the killer's eyes, from a few seconds
+// before to a little after, and the next round (or the end of the match) waits for it.
+
+use crate::client::Team;
+use sim::pm::PmType;
+
+/// How much of the time before the kill the replay shows, and after it.
+const BEFORE_MS: i32 = 3500;
+const AFTER_MS: i32 = 1500;
+/// A final killcam that has not started this long after its kill is dropped (a level that never moved on).
+const GIVE_UP_MS: i32 = 12_000;
+
+/// What a person was doing before the replay took their view, given back after it.
+struct Saved {
+    slot: u16,
+    session: crate::client::Session,
+    spectator_client: i32,
+    archive_time: f32,
+    kill_cam_entity: i32,
+    ps_offset_time: i32,
+}
+
+struct FinalCam {
+    attacker: u16,
+    /// The attacker's lag offset at the kill (the bodies were judged that much in the past).
+    offset_ms: i32,
+    /// Level time of the kill.
+    kill_time: i32,
+    /// Level time the replay began; `None` while the moments after the kill still play out live.
+    started: Option<i32>,
+    saved: Vec<Saved>,
+}
+
+static FINAL: Mutex<Option<FinalCam>> = Mutex::new(None);
+
+fn final_cam() -> std::sync::MutexGuard<'static, Option<FinalCam>> {
+    FINAL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Whether a final killcam is waiting or playing: the round restart and the end of the match wait for it.
+pub fn final_killcam_active() -> bool {
+    final_cam().is_some()
+}
+
+impl Game {
+    /// Called by `player_die`: a Search and Destroy kill that leaves the victim's team with nobody alive is the
+    /// round's last kill, and gets a final killcam.
+    pub fn legacy4_on_kill(&mut self, victim: u16, attacker: Option<u16>, time_offset: i32) {
+        if !self.cvars.string("g_gametype").eq_ignore_ascii_case("sd")
+            || self.cvars.string("scr_game_allowkillcam") == "0"
+        {
+            return;
+        }
+        let Some(attacker) = attacker.filter(|a| *a != victim) else {
+            return;
+        };
+        let (Some(v), Some(a)) = (self.client(victim), self.client(attacker)) else {
+            return;
+        };
+        let team = v.team;
+        if a.team == team || matches!(team, Team::Free | Team::Spectator) {
+            return;
+        }
+        let left = self
+            .connected_clients()
+            .filter(|(n, c)| {
+                *n != victim
+                    && c.team == team
+                    && c.session == Session::Playing
+                    && !matches!(c.ps.pm_type, PmType::Dead | PmType::DeadLinked)
+            })
+            .count();
+        if left > 0 {
+            return;
+        }
+        tracing::info!(attacker, victim, "legacy4: final killcam for the round's last kill");
+        *final_cam() = Some(FinalCam {
+            attacker,
+            offset_ms: time_offset,
+            kill_time: self.level.time,
+            started: None,
+            saved: Vec::new(),
+        });
+    }
+
+    /// Once a server frame, after the scripts and before the snapshots: starts, holds and ends the final killcam.
+    /// `span_ms` is how far back the history reaches now.
+    pub fn legacy4_final_frame(&mut self, span_ms: i32) {
+        let mut guard = final_cam();
+        let Some(f) = guard.as_mut() else { return };
+        let now = self.level.time;
+        // A new level (time went back), or one that never moved on: nothing to show any more.
+        if now < f.kill_time || (f.started.is_none() && now > f.kill_time + GIVE_UP_MS) {
+            *guard = None;
+            return;
+        }
+        let start = match f.started {
+            Some(s) => s,
+            None => {
+                if now < f.kill_time + AFTER_MS {
+                    return; // the moment after the kill plays out live first
+                }
+                f.saved = self
+                    .connected_clients()
+                    .filter(|(_, c)| !c.bot)
+                    .map(|(slot, c)| Saved {
+                        slot,
+                        session: c.session,
+                        spectator_client: c.spectator_client,
+                        archive_time: c.archive_time,
+                        kill_cam_entity: c.kill_cam_entity,
+                        ps_offset_time: c.ps_offset_time,
+                    })
+                    .collect();
+                for s in &f.saved {
+                    self.send(
+                        crate::ui::Dest::Client(s.slot),
+                        net::ui::ServerCmd::Print {
+                            kind: net::ui::PrintKind::Bold,
+                            text: "FINAL KILLCAM\n".to_owned(),
+                        },
+                    );
+                }
+                f.started = Some(now);
+                now
+            }
+        };
+        if now >= start + BEFORE_MS + AFTER_MS + 300 {
+            // Over: everyone gets their own view back, and the round may move on.
+            for s in std::mem::take(&mut f.saved) {
+                if let Some(c) = self.client_mut(s.slot) {
+                    c.session = s.session;
+                    c.spectator_client = s.spectator_client;
+                    c.archive_time = s.archive_time;
+                    c.kill_cam_entity = s.kill_cam_entity;
+                    c.ps_offset_time = s.ps_offset_time;
+                }
+            }
+            *guard = None;
+            return;
+        }
+        // The replay: the frame `archive` ago, from `BEFORE_MS` before the kill, moving forward in step with time.
+        let archive_ms = (start - (f.kill_time - BEFORE_MS)).min(span_ms - 50).max(0);
+        let (attacker, offset) = (f.attacker, f.offset_ms);
+        let slots: Vec<u16> = f.saved.iter().map(|s| s.slot).collect();
+        drop(guard);
+        for slot in slots {
+            if let Some(c) = self.client_mut(slot) {
+                c.session = Session::Spectator;
+                c.spectator_client = i32::from(attacker);
+                c.archive_time = archive_ms as f32 * 0.001;
+                c.kill_cam_entity = -1;
+                c.ps_offset_time = offset;
+            }
+        }
+    }
+}

@@ -87,3 +87,14 @@ soldat, brumes et logo CoD4 transparents. `journal.txt` note chaque image rempla
 - Logo « Call of Duty 4 » du menu (image `cod4`) masqué.
 - Diagnostic du bot increvable : `journal.txt` note chaque balle qui atteint un bot (« legacy4: a bullet reached a
   bot ») et chaque dégât refusé à un bot avec la raison (« legacy4: damage to a bot refused »).
+
+## Killcam finale (0.12)
+Le CoD4 d'origine n'en a pas ; elle est faite par le serveur seul (`src/server_legacy4.rs`, étape 17), avec l'historique
+que rejoue la killcam normale (`archive.rs`, 15 s) :
+- `legacy4_on_kill` (appelé par `player_die`) : en Recherche et Destruction, un kill qui ne laisse personne en vie dans
+  l'équipe de la victime est le dernier de la manche. Respecte « Allow KillCam » (`scr_game_allowkillcam`).
+- `legacy4_final_frame` (chaque image, avant l'envoi aux joueurs) : 1,5 s après le kill, chaque joueur humain (pas les
+  bots) voit « FINAL KILLCAM » et la scène par les yeux du tueur, de 3,5 s avant le kill à 1,5 s après ; puis tout
+  revient comme avant.
+- La manche suivante (`map_restart`) et la fin du match (`exit_requested`) attendent la fin de la killcam finale.
+- `netsv.rs` : un joueur peut se suivre lui-même pendant un replay (le tueur revoit son tir).

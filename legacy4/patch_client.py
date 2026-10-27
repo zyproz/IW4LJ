@@ -351,4 +351,30 @@ edit("crates/server/src/combat.rs",
      "            }\n"
      "            return;\n        }\n",
      "log refused damage to bots")
+
+# 17. Final killcam (Search and Destroy), all in the server: legacy4.rs `legacy4_on_kill` / `legacy4_final_frame`.
+edit("crates/server/src/combat.rs",
+     "        c.ps.weapon_state = 0;\n        self.stats.deaths += 1;\n",
+     "        c.ps.weapon_state = 0;\n        self.stats.deaths += 1;\n"
+     "        self.legacy4_on_kill(n, d.attacker, d.time_offset);\n",
+     "final killcam: the round's last kill")
+edit("crates/server/src/server.rs",
+     "        let t = Instant::now();\n        let mut gone_lines = Vec::new();\n",
+     "        let span = self.net.as_ref().map_or(0, |n| n.archive_span(self.svs_time));\n"
+     "        self.game.legacy4_final_frame(span);\n"
+     "        let t = Instant::now();\n        let mut gone_lines = Vec::new();\n",
+     "final killcam: each frame")
+edit("crates/server/src/server.rs",
+     "        if self.game.level.exit_requested {\n",
+     "        if self.game.level.exit_requested && !crate::legacy4::final_killcam_active() {\n",
+     "final killcam: the match end waits")
+edit("crates/server/src/server.rs",
+     "        if self.game.level.map_restart_requested {\n",
+     "        if self.game.level.map_restart_requested && !crate::legacy4::final_killcam_active() {\n",
+     "final killcam: the next round waits")
+# The killer watches his own kill: a person may follow himself while a replay (archive time) is set.
+edit("crates/server/src/netsv.rs",
+     ".filter(|t| *t != slot && c.session == Session::Spectator);",
+     ".filter(|t| (*t != slot || c.archive_time > 0.0) && c.session == Session::Spectator);",
+     "final killcam: the killer watches himself")
 print("patch_client: all changes applied")
