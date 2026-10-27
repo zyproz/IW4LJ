@@ -1,5 +1,6 @@
 # Legacy 4: builds zz_legacy4.iwd, which replaces the main menu's background layers with the Legacy 4 banner.
-# IWDs load in name order and the last one wins, so `zz_` puts these images over the stock ones of iw_00..iw_13.
+# IWDs load in name order and the last one wins; `main` takes only `iw_*` names, so the game installs it as
+# `iw_zz_legacy4.iwd`, after iw_00..iw_13.
 # usage: python3 make_menu_iwd.py <banner image> <out .iwd>
 import struct
 import sys

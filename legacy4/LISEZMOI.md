@@ -64,3 +64,5 @@ Le module est partagé par toutes les applis Legacy Mobile :
 `bg_blur_back` = bannière floutée, et le soldat (`bg_front`), les brumes (`bg_fogscroll`) et le logo CoD4
 (`main_back_top_mp_english`) deviennent transparents. Le jeu l'écrit dans `cod4/main` au lancement s'il manque ;
 supprimer ce fichier rend le menu d'origine (jusqu'au lancement suivant).
+- 0.8 : le fichier est écrit sous le nom `iw_zz_legacy4.iwd` : comme le jeu d'origine, le moteur n'accepte dans `main`
+  que les `.iwd` en `iw_*`, et ignorait `zz_legacy4.iwd` (supprimé au lancement).

@@ -110,8 +110,9 @@ pub fn touch_as_mouse(t: &Touch) -> Vec<WindowEvent> {
 }
 
 /// The Legacy 4 main menu (legacy4/menu/make_menu_iwd.py): the banner instead of the CoD4 background. IWDs load in
-/// name order and the last one wins, so `zz_legacy4.iwd` in `main` covers the stock images; it is (re)written when
-/// missing or different, and never touches the player's own files.
+/// name order and the last one wins, and `main` only takes `iw_*` names (as the original does), so
+/// `iw_zz_legacy4.iwd` covers the stock `iw_00`..`iw_13` images. It is (re)written when missing or different, and
+/// never touches the player's own files.
 static MENU_IWD: &[u8] = include_bytes!("zz_legacy4.iwd");
 
 fn install_menu_images(install: &Path) {
@@ -122,7 +123,9 @@ fn install_menu_images(install: &Path) {
     }) else {
         return;
     };
-    let target = main.join("zz_legacy4.iwd");
+    // 0.7 wrote it under a name `main` ignores.
+    let _ = fs::remove_file(main.join("zz_legacy4.iwd"));
+    let target = main.join("iw_zz_legacy4.iwd");
     if fs::metadata(&target).map(|m| m.len()).ok() != Some(MENU_IWD.len() as u64)
         && let Err(e) = fs::write(&target, MENU_IWD)
     {
@@ -171,7 +174,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.7: starting with {args:?}");
+    eprintln!("Legacy 4 0.8: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
