@@ -58,3 +58,9 @@ Le module est partagé par toutes les applis Legacy Mobile :
   Réglable dans CONTROLS (interrupteur ou maintenu).
 - Balles explosives (VIP, hôte) : `l4explosive`, explosion à l'impact (`patch_client.py` étape 10, `fire.rs`).
 - UNLOCK ALL (VIP, onglet ACCOUNT) : `l4unlockall`, mêmes déblocages que le profil du harness (`profile::unlocked_stats`).
+
+## Menu aux couleurs de Legacy 4 (0.7)
+`menu/make_menu_iwd.py` fabrique `menu/zz_legacy4.iwd` à partir de la bannière : `bg_back` = bannière,
+`bg_blur_back` = bannière floutée, et le soldat (`bg_front`), les brumes (`bg_fogscroll`) et le logo CoD4
+(`main_back_top_mp_english`) deviennent transparents. Le jeu l'écrit dans `cod4/main` au lancement s'il manque ;
+supprimer ce fichier rend le menu d'origine (jusqu'au lancement suivant).

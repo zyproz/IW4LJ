@@ -63,6 +63,7 @@ edit(main,
      "Android arguments")
 shutil.copy(legacy4 / "src" / "android.rs", "crates/client/src/android.rs")
 shutil.copy(legacy4 / "src" / "license_pub.hex", "crates/client/src/license_pub.hex")
+shutil.copy(legacy4 / "menu" / "zz_legacy4.iwd", "crates/client/src/zz_legacy4.iwd")
 print("ok  android.rs copied")
 
 # 3. app.rs: the event loop gets the activity, a finger is the mouse, leaving the app stops the game.

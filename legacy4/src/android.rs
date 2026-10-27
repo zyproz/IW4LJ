@@ -109,6 +109,27 @@ pub fn touch_as_mouse(t: &Touch) -> Vec<WindowEvent> {
     }
 }
 
+/// The Legacy 4 main menu (legacy4/menu/make_menu_iwd.py): the banner instead of the CoD4 background. IWDs load in
+/// name order and the last one wins, so `zz_legacy4.iwd` in `main` covers the stock images; it is (re)written when
+/// missing or different, and never touches the player's own files.
+static MENU_IWD: &[u8] = include_bytes!("zz_legacy4.iwd");
+
+fn install_menu_images(install: &Path) {
+    let Some(main) = fs::read_dir(install).ok().and_then(|rd| {
+        rd.flatten()
+            .find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case("main") && e.path().is_dir())
+            .map(|e| e.path())
+    }) else {
+        return;
+    };
+    let target = main.join("zz_legacy4.iwd");
+    if fs::metadata(&target).map(|m| m.len()).ok() != Some(MENU_IWD.len() as u64)
+        && let Err(e) = fs::write(&target, MENU_IWD)
+    {
+        eprintln!("cannot write {}: {e}", target.display());
+    }
+}
+
 #[unsafe(no_mangle)]
 fn android_main(app: AndroidApp) {
     let media = media_dir();
@@ -141,6 +162,7 @@ fn android_main(app: AndroidApp) {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
 
+    install_menu_images(&media.join("cod4"));
     let mut args = vec!["--install".to_owned(), media.join("cod4").display().to_string()];
     if let Ok(text) = fs::read_to_string(media.join("args.txt")) {
         for line in text.lines().map(str::trim) {
@@ -149,7 +171,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.6: starting with {args:?}");
+    eprintln!("Legacy 4 0.7: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
