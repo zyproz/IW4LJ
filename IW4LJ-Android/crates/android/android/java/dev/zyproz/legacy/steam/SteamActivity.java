@@ -100,6 +100,11 @@ public class SteamActivity extends Activity {
         installCrypto();
         // The password is sent only to Steam: no "save to Samsung Pass / Google" offer for these fields.
         getWindow().getDecorView().setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        // Lets the "Steam in progress" notification show (Android 13+). Saying no changes nothing else.
+        if (checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, 1);
+        }
 
         box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -242,6 +247,8 @@ public class SteamActivity extends Activity {
     }
 
     private void start(String account, String password) {
+        // Keeps the connection alive while the player approves in the Steam app or leaves during the download.
+        SteamKeepAlive.start(this, "Steam: " + gameName);
         Thread t = new Thread(() -> {
             try {
                 client = new SteamClient();
@@ -403,6 +410,7 @@ public class SteamActivity extends Activity {
                 }
             }
         }
+        SteamKeepAlive.stop(this);
         if (ok && failure[0] == null) {
             setStatus("Done! " + gameName + " is installed.");
             runOnUiThread(() -> {
@@ -485,6 +493,7 @@ public class SteamActivity extends Activity {
 
     private void fail(String message) {
         running = false;
+        SteamKeepAlive.stop(this);
         note("FAILED: " + message);
         runOnUiThread(() -> {
             status.setText(message + "\n\nDetails: " + log.getAbsolutePath());
@@ -512,7 +521,8 @@ public class SteamActivity extends Activity {
 
     private synchronized void note(String s) {
         try (FileWriter w = new FileWriter(log, true)) {
-            w.write(s + "\n");
+            w.write(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date())
+                    + " " + s + "\n");
         } catch (Exception ignored) {
         }
     }
@@ -563,6 +573,7 @@ public class SteamActivity extends Activity {
         super.onDestroy();
         if (!downloading) {
             running = false;
+            SteamKeepAlive.stop(this);
             try {
                 if (client != null) {
                     client.disconnect();
