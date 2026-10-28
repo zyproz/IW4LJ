@@ -98,7 +98,13 @@ public class SteamActivity extends Activity {
         log = new File(target.getParentFile(), "steam-log.txt");
         log.delete();
         installCrypto();
+        // The password is sent only to Steam: no "save to Samsung Pass / Google" offer for these fields.
         getWindow().getDecorView().setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        // Lets the "Steam in progress" notification show (Android 13+). Saying no changes nothing else.
+        if (checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, 1);
+        }
 
         box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -222,7 +228,27 @@ public class SteamActivity extends Activity {
 
     // ---------- Steam ----------
 
+    /**
+     * JavaSteam encrypts with the provider named "BC" (Bouncy Castle). Android has its own cut-down "BC" that
+     * refuses most algorithms to apps since Android 9, so the full one shipped in the APK takes its place, in
+     * this app's process only. Must run before JavaSteam's CryptoHelper is first used.
+     */
+    private void installCrypto() {
+        try {
+            java.security.Provider current = java.security.Security.getProvider("BC");
+            if (!(current instanceof org.bouncycastle.jce.provider.BouncyCastleProvider)) {
+                java.security.Security.removeProvider("BC");
+                java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+            }
+            note("Crypto: " + java.security.Security.getProvider("BC"));
+        } catch (Throwable e) {
+            note("Crypto setup failed: " + stack(e));
+        }
+    }
+
     private void start(String account, String password) {
+        // Keeps the connection alive while the player approves in the Steam app or leaves during the download.
+        SteamKeepAlive.start(this, "Steam: " + gameName);
         Thread t = new Thread(() -> {
             try {
                 client = new SteamClient();
@@ -384,6 +410,7 @@ public class SteamActivity extends Activity {
                 }
             }
         }
+        SteamKeepAlive.stop(this);
         if (ok && failure[0] == null) {
             setStatus("Done! " + gameName + " is installed.");
             runOnUiThread(() -> {
@@ -466,6 +493,7 @@ public class SteamActivity extends Activity {
 
     private void fail(String message) {
         running = false;
+        SteamKeepAlive.stop(this);
         note("FAILED: " + message);
         runOnUiThread(() -> {
             status.setText(message + "\n\nDetails: " + log.getAbsolutePath());
@@ -491,27 +519,10 @@ public class SteamActivity extends Activity {
         runOnUiThread(() -> status.setText(s));
     }
 
-    /**
-     * JavaSteam's crypto asks for the "BC" provider. Android's own is a cut-down Bouncy Castle that refuses most
-     * algorithms since Android 9: the full one (bcprov) replaces it, in this app's process only, before
-     * JavaSteam's CryptoHelper is used.
-     */
-    private void installCrypto() {
-        try {
-            java.security.Provider current = java.security.Security.getProvider("BC");
-            if (!(current instanceof org.bouncycastle.jce.provider.BouncyCastleProvider)) {
-                java.security.Security.removeProvider("BC");
-                java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-            }
-            note("Crypto: " + java.security.Security.getProvider("BC"));
-        } catch (Throwable e) {
-            note("Crypto setup failed: " + stack(e));
-        }
-    }
-
     private synchronized void note(String s) {
         try (FileWriter w = new FileWriter(log, true)) {
-            w.write(s + "\n");
+            w.write(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date())
+                    + " " + s + "\n");
         } catch (Exception ignored) {
         }
     }
@@ -562,6 +573,7 @@ public class SteamActivity extends Activity {
         super.onDestroy();
         if (!downloading) {
             running = false;
+            SteamKeepAlive.stop(this);
             try {
                 if (client != null) {
                     client.disconnect();

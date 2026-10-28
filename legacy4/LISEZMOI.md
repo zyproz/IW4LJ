@@ -154,3 +154,12 @@ que rejoue la killcam normale (`archive.rs`, 15 s) :
   Fermer l'appli pour de bon (liste des applis récentes) termine le processus.
 - Onglet TOUCH du menu Legacy : EDIT LAYOUT (glisser chaque bouton, - / + pour sa taille, RESET, DONE enregistre),
   RESET LAYOUT, visibilité et taille des boutons, AIM interrupteur/maintenu (`TouchPad.java`, préférences `btnN_x/y/s`).
+
+## 0.18
+- Steam : module commun Legacy Mobile, version qui marche (Legacy Warfare 3.4). Android mettait l'appli en pause
+  pendant que le joueur validait la connexion dans l'appli Steam (« Disconnected from Steam » + CancellationException).
+  Nouveau `SteamKeepAlive.java` (service au premier plan, type dataSync, verrou CPU et Wi-Fi, notification
+  « Legacy Mobile - Steam ») qui garde l'appli active jusqu'à la fin du téléchargement. `SteamActivity.java` et
+  `steam/build.gradle.kts` remplacés par ceux du module commun ; manifeste : 4 autorisations (FOREGROUND_SERVICE,
+  FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK, POST_NOTIFICATIONS) et le `<service>`. Extras de LaunchActivity inchangés
+  (app 7940, dossier cod4).

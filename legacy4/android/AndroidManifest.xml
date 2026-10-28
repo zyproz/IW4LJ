@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.zyproz.legacy4"
-    android:versionCode="17"
-    android:versionName="0.17">
+    android:versionCode="18"
+    android:versionName="0.18">
 
     <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="34" />
     <!-- Network play: sockets, and finding LAN servers over Wi-Fi. -->
@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- Steam download (shared Legacy Mobile module): keeps the app awake while the player approves the sign-in
+         in the Steam app and during the download. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.vulkan.version" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -41,6 +47,10 @@
             android:exported="false"
             android:configChanges="orientation|keyboardHidden|keyboard|navigation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:windowSoftInputMode="adjustResize" />
+        <service
+            android:name="dev.zyproz.legacy.steam.SteamKeepAlive"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- The front door: says where the game files go, or why the last start stopped. -->
         <activity

@@ -15,7 +15,8 @@ dependencies {
     implementation("in.dragonbra:javasteam-depotdownloader:1.8.0")
     // Steam chunk decompression: LZMA (pure Java) and Zstandard (native, Android build below).
     implementation("org.tukaani:xz:1.11")
-    // Bouncy Castle: JavaSteam loads it by name for its crypto but does not bring it (compileOnly).
+    // Encryption (sign-in, Steam chunks): JavaSteam loads org.bouncycastle.jce.provider.BouncyCastleProvider
+    // by name but does not bring it, like xz and zstd above.
     implementation("org.bouncycastle:bcprov-jdk18on:1.80")
     // QR code drawing for the Steam sign-in.
     implementation("com.google.zxing:core:3.5.3")
