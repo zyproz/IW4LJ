@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           # Same build as `cargo xtask master install`: glibc linked statically, runs on any Linux x86_64.
           RUSTFLAGS="-C target-feature=+crt-static" \
-            cargo build -p iw4l-master --release --locked --target x86_64-unknown-linux-gnu
+            cargo build -p iw4l-master --release --target x86_64-unknown-linux-gnu
           B=target/x86_64-unknown-linux-gnu/release/iw4l-master
           file "$B"
           "$B" print-unit --name test --port 4433 --exec /x --cert /c --key /k >/dev/null
