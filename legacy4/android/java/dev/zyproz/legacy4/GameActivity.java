@@ -1,6 +1,10 @@
 package dev.zyproz.legacy4;
 
+import android.app.AlertDialog;
 import android.app.NativeActivity;
+import android.text.InputType;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.PixelFormat;
@@ -38,6 +42,8 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
     private ModMenu mods;
     private WindowManager.LayoutParams overlayParams;
     private boolean lastMenu;
+    private boolean lastTextField;
+    private AlertDialog textDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -153,7 +159,63 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             pad.gameMenu = menu;
             pad.invalidate();
         }
+        boolean field = nativeTextField();
+        if (field && !lastTextField && textDialog == null) {
+            askText();
+        }
+        lastTextField = field;
         handler.postDelayed(this::watchMenu, 120);
+    }
+
+    /**
+     * One of the game's text fields (a new profile's name, a password...) is being typed in: the phone's keyboard
+     * opens in a small box, and what is typed replaces the field's text, followed by Enter.
+     */
+    private void askText() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        input.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        textDialog = new AlertDialog.Builder(this)
+                .setTitle("Legacy 4")
+                .setView(input)
+                .setPositiveButton("OK", (d, w) -> sendText(input.getText().toString()))
+                .setNegativeButton("Cancel", (d, w) -> nativeTextKey(-4))
+                .setOnCancelListener(d -> nativeTextKey(-4))
+                .create();
+        textDialog.setOnDismissListener(d -> {
+            textDialog = null;
+            hideBars();
+        });
+        input.setOnEditorActionListener((v, action, ev) -> {
+            if (action == EditorInfo.IME_ACTION_DONE || action == EditorInfo.IME_NULL) {
+                sendText(input.getText().toString());
+                if (textDialog != null) {
+                    textDialog.dismiss();
+                }
+                return true;
+            }
+            return false;
+        });
+        if (textDialog.getWindow() != null) {
+            textDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        }
+        textDialog.show();
+        input.requestFocus();
+    }
+
+    /** The field's old text goes (End, then Backspace), the typed text comes in, Enter ends the typing. */
+    private static void sendText(String text) {
+        nativeTextKey(-1);
+        for (int i = 0; i < 64; i++) {
+            nativeTextKey(-2);
+        }
+        for (int i = 0; i < text.length(); ) {
+            int c = text.codePointAt(i);
+            nativeTextKey(c);
+            i += Character.charCount(c);
+        }
+        nativeTextKey(-3);
     }
 
     private void openMods() {
@@ -514,6 +576,10 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
     private static native void nativeLookSpeed(float degreesPerPixel);
 
     private static native boolean nativeMenuOpen();
+
+    private static native boolean nativeTextField();
+
+    private static native void nativeTextKey(int code);
 
     private static native void nativeCommandChar(int c);
 

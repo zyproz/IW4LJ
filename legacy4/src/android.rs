@@ -239,7 +239,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.14: starting with {args:?}");
+    eprintln!("Legacy 4 0.15: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
@@ -296,6 +296,10 @@ struct PadShared {
     /// Console lines from the mod menu, and the one being received.
     commands: Vec<String>,
     typing: String,
+    /// One of the game's text fields (a profile name, a password...) is being typed in.
+    text_field: bool,
+    /// Keys typed on the phone's keyboard for that field, not yet given to the game.
+    text_keys: Vec<UiKey>,
 }
 
 static PAD: Mutex<Option<PadShared>> = Mutex::new(None);
@@ -496,7 +500,10 @@ pub fn menu_frame(open: bool, width: f32, height: f32) -> Vec<MenuAct> {
             }
         }
         p.menu_open = open;
-        let mut out = Vec::new();
+        let mut out: Vec<MenuAct> = std::mem::take(&mut p.text_keys)
+            .into_iter()
+            .map(MenuAct::Key)
+            .collect();
         if !open {
             p.menu.clear();
             p.touch.clear();
@@ -588,6 +595,39 @@ pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeMenuOpen(
     _class: *mut std::ffi::c_void,
 ) -> u8 {
     with_pad(|p| u8::from(p.menu_open))
+}
+
+/// Called every frame: whether one of the game's text fields is being typed in (the activity opens the keyboard).
+pub fn set_text_field(on: bool) {
+    with_pad(|p| p.text_field = on);
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeTextField(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) -> u8 {
+    with_pad(|p| u8::from(p.text_field))
+}
+
+/// A key from the phone's keyboard for the game's text field: a character (0 and up), or -1 End, -2 Backspace,
+/// -3 Enter, -4 Escape.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeTextKey(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    code: i32,
+) {
+    let key = match code {
+        -1 => Some(UiKey::End),
+        -2 => Some(UiKey::Backspace),
+        -3 => Some(UiKey::Enter),
+        -4 => Some(UiKey::Escape),
+        c => u32::try_from(c).ok().and_then(char::from_u32).map(UiKey::Char),
+    };
+    if let Some(k) = key {
+        with_pad(|p| p.text_keys.push(k));
+    }
 }
 
 /// A console line from the mod menu, one character at a time (no JNI string handling needed).

@@ -135,6 +135,8 @@ edit(app,
      "                }\n"
      "                // UNLOCK ALL stays: every weapon, attachment and camo of the menus (stat 3000 + weapon number,\n"
      "                // bit 0 = unlocked), whatever a server or an old profile says.\n"
+     "                // A text field of the game in use: the activity opens the phone's keyboard.\n"
+     "                crate::android::set_text_field(sh.ui.l4_editing());\n"
      "                if crate::android::unlock_all() {\n"
      "                    for s in sh.st.stats.iter_mut().skip(3000).take(90) {\n"
      "                        *s |= 0x7fff;\n"
@@ -648,5 +650,29 @@ edit("crates/client/src/ui/assets.rs",
      "        }\n"
      "        Ok(a)\n",
      "killcam without red bands")
+
+# 23. input/mod.rs: `set <dvar> <words...>` keeps every word, as the original's Cmd_Set_f. Create a Class sets
+#     `ui_primary_selected` to "Primary Weapon" and only lets a weapon be picked when it reads that; the second word
+#     was dropped, so every primary weapon stayed grey.
+edit("crates/client/src/input/mod.rs",
+     "            (\"set\" | \"seta\" | \"sets\" | \"setu\", [n, v, ..]) => {\n"
+     "                self.cvars.set(n, v, name == \"seta\");\n",
+     "            (\"set\" | \"seta\" | \"sets\" | \"setu\", [n, v, rest @ ..]) => {\n"
+     "                let value = std::iter::once(*v)\n"
+     "                    .chain(rest.iter().copied())\n"
+     "                    .collect::<Vec<&str>>()\n"
+     "                    .join(\" \");\n"
+     "                self.cvars.set(n, &value, name == \"seta\");\n",
+     "set keeps every word")
+
+# 24. ui/mod.rs: whether a text field is being typed in (Android: the phone's keyboard opens for it).
+edit("crates/client/src/ui/mod.rs",
+     "impl Ui {\n",
+     "impl Ui {\n"
+     "    /// Legacy 4: an edit field has the keys (a profile name, a password...).\n"
+     "    pub fn l4_editing(&self) -> bool {\n"
+     "        self.menus.iter().any(|m| m.items.iter().any(|it| it.editing))\n"
+     "    }\n\n",
+     "text field in use")
 
 print("patch_client: all changes applied")

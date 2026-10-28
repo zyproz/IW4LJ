@@ -128,3 +128,12 @@ que rejoue la killcam normale (`archive.rs`, 15 s) :
   (`archive.rs` `at_smooth`, étape 20), et le client dessine la vue du joueur suivi entre deux snapshots, au rythme
   de l'écran (étape 21). Le ralenti ne saccade plus.
 - Killcam : les deux bandes rouges du hud d'origine (menu `killcam`) sont retirées ; le titre reste (étape 22).
+
+## 0.15
+- Create a Class : toutes les armes principales restaient grises, même débloquées. Le bouton « Primary Weapon » fait
+  `set ui_primary_selected Primary Weapon` et une arme ne se choisit que si ce dvar vaut « Primary Weapon » ; le `set`
+  du client ne gardait que le premier mot (« Primary »). Il garde maintenant tous les mots, comme `Cmd_Set_f`
+  (étape 23, `input/mod.rs`).
+- Clavier : quand un champ texte du jeu est en cours (nom d'un nouveau profil, mot de passe...), une petite fenêtre
+  Android s'ouvre avec le clavier du téléphone ; OK remplace le texte du champ puis valide (Entrée), Annuler fait
+  Échap. `android.rs` : `set_text_field`, `nativeTextField`, `nativeTextKey` ; `ui/mod.rs` : `l4_editing` (étape 24).
