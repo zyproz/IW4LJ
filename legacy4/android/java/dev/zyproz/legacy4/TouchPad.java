@@ -1,6 +1,7 @@
 package dev.zyproz.legacy4;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -16,6 +17,7 @@ import android.view.View;
  * ringed by AIM, JUMP, CROUCH, RELOAD..., and a row of small buttons along the top. FIRE also turns the view while
  * held. Each button presses the controller button the game already binds (input/extra_binds.cfg).
  * In one of the game's menus: only MENU stays, and a finger is the mouse.
+ * Layout editor (mod menu, TOUCH tab): drag a button to move it, - / + resize the one picked, DONE saves.
  */
 public class TouchPad extends View {
 
@@ -29,6 +31,10 @@ public class TouchPad extends View {
         final float x, y, r;
         final boolean accent;
         boolean down;
+        /** Moved by the player (TOUCH tab, EDIT LAYOUT): centre in fractions of the screen, -1 = default place. */
+        float fx = -1, fy = -1;
+        /** Size set by the player, 1 = default. */
+        float fs = 1f;
 
         Btn(String label, int key, boolean bottom, float x, float y, float r, boolean accent) {
             this.label = label;
@@ -107,6 +113,7 @@ public class TouchPad extends View {
         text.setTextAlign(Paint.Align.CENTER);
         text.setTypeface(Typeface.DEFAULT_BOLD);
         text.setColor(Color.WHITE);
+        loadLayout();
     }
 
     private float unit() {
@@ -114,19 +121,28 @@ public class TouchPad extends View {
     }
 
     private float cx(Btn b) {
+        if (b.fx >= 0) {
+            return b.fx * getWidth();
+        }
         float d = b.x * unit() * (b.bottom ? scale : 1f);
         return b.left ? d : getWidth() - d;
     }
 
     private float cy(Btn b) {
+        if (b.fy >= 0) {
+            return b.fy * getHeight();
+        }
         return b.bottom ? getHeight() - b.y * unit() * scale : b.y * unit();
     }
 
     private float radius(Btn b) {
-        return b.r * unit() * (b.bottom ? scale : 1f);
+        return b.r * unit() * (b.bottom ? scale : 1f) * b.fs;
     }
 
     private boolean shown(Btn b) {
+        if (editing) {
+            return true;
+        }
         return !padActive && (!gameMenu || b.key == MODS);
     }
 
@@ -147,6 +163,10 @@ public class TouchPad extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        if (editing) {
+            drawEditor(canvas);
+            return;
+        }
         if (padActive) {
             return;
         }
@@ -182,6 +202,10 @@ public class TouchPad extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
+        if (editing) {
+            editTouch(e);
+            return true;
+        }
         if (padActive) {
             padActive = false;
             invalidate();
@@ -307,6 +331,147 @@ public class TouchPad extends View {
             GameActivity.pressButton(buttons[r].key, false);
             invalidate();
         }
+    }
+
+    // ---------- layout editor ----------
+
+    /** The layout editor is on: the game gets no input, every button is drawn and can be moved. */
+    boolean editing;
+    private int picked = -1;
+    private float grabDx, grabDy;
+    private static final String[] TOOLS = {"-", "+", "RESET", "DONE"};
+
+    private SharedPreferences prefs() {
+        return getContext().getSharedPreferences("legacy4", Context.MODE_PRIVATE);
+    }
+
+    /** The places and sizes the player saved (EDIT LAYOUT); the default layout where there is none. */
+    void loadLayout() {
+        SharedPreferences p = prefs();
+        for (int i = 0; i < buttons.length; i++) {
+            buttons[i].fx = p.getFloat("btn" + i + "_x", -1f);
+            buttons[i].fy = p.getFloat("btn" + i + "_y", -1f);
+            buttons[i].fs = p.getFloat("btn" + i + "_s", 1f);
+        }
+        invalidate();
+    }
+
+    private void saveLayout() {
+        SharedPreferences.Editor ed = prefs().edit();
+        for (int i = 0; i < buttons.length; i++) {
+            ed.putFloat("btn" + i + "_x", buttons[i].fx);
+            ed.putFloat("btn" + i + "_y", buttons[i].fy);
+            ed.putFloat("btn" + i + "_s", buttons[i].fs);
+        }
+        ed.apply();
+    }
+
+    void startEdit() {
+        releaseAll();
+        editing = true;
+        picked = -1;
+        setVisibility(VISIBLE);
+        invalidate();
+    }
+
+    /** The editor's own buttons, in a row in the middle of the screen: left, top, right, bottom. */
+    private float[] toolRect(int i) {
+        float w = 13 * unit(), h = 8 * unit(), gap = 2 * unit();
+        float total = TOOLS.length * w + (TOOLS.length - 1) * gap;
+        float left = (getWidth() - total) / 2 + i * (w + gap);
+        float top = getHeight() * 0.42f;
+        return new float[] {left, top, left + w, top + h};
+    }
+
+    private void drawEditor(Canvas canvas) {
+        canvas.drawColor(Color.argb(110, 0, 0, 0));
+        ring.setStrokeWidth(unit() * 0.4f);
+        for (int i = 0; i < buttons.length; i++) {
+            Btn b = buttons[i];
+            float r = radius(b);
+            fill.setColor(Color.argb(150, 20, 20, 20));
+            ring.setColor(i == picked ? Color.rgb(57, 255, 20) : Color.rgb(230, 230, 230));
+            canvas.drawCircle(cx(b), cy(b), r, fill);
+            canvas.drawCircle(cx(b), cy(b), r, ring);
+            text.setTextSize(Math.min(r * 0.55f, r * 3.2f / Math.max(3, b.label.length())));
+            text.setAlpha(255);
+            canvas.drawText(b.label, cx(b), cy(b) + text.getTextSize() * 0.35f, text);
+        }
+        text.setAlpha(255);
+        text.setTextSize(3.6f * unit());
+        String size = picked >= 0 ? "   (" + buttons[picked].label + " " + Math.round(buttons[picked].fs * 100) + "%)" : "";
+        canvas.drawText("Drag a button to move it.  - / + : size of the green one" + size,
+                getWidth() / 2f, getHeight() * 0.37f, text);
+        for (int i = 0; i < TOOLS.length; i++) {
+            float[] r = toolRect(i);
+            fill.setColor(Color.argb(220, 12, 14, 12));
+            ring.setColor(Color.rgb(57, 255, 20));
+            canvas.drawRoundRect(r[0], r[1], r[2], r[3], unit(), unit(), fill);
+            canvas.drawRoundRect(r[0], r[1], r[2], r[3], unit(), unit(), ring);
+            text.setTextSize(4f * unit());
+            canvas.drawText(TOOLS[i], (r[0] + r[2]) / 2, (r[1] + r[3]) / 2 + 1.4f * unit(), text);
+        }
+    }
+
+    private void editTouch(MotionEvent e) {
+        int action = e.getActionMasked();
+        float x = e.getX(e.getActionIndex()), y = e.getY(e.getActionIndex());
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+            for (int i = 0; i < TOOLS.length; i++) {
+                float[] r = toolRect(i);
+                if (x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]) {
+                    tool(i);
+                    return;
+                }
+            }
+            int b = -1;
+            for (int i = 0; i < buttons.length; i++) {
+                float r = radius(buttons[i]) * 1.15f;
+                float dx = x - cx(buttons[i]), dy = y - cy(buttons[i]);
+                if (dx * dx + dy * dy <= r * r) {
+                    b = i;
+                }
+            }
+            picked = b;
+            if (b >= 0) {
+                grabDx = cx(buttons[b]) - x;
+                grabDy = cy(buttons[b]) - y;
+            }
+            invalidate();
+        } else if (action == MotionEvent.ACTION_MOVE && picked >= 0 && getWidth() > 0 && getHeight() > 0) {
+            Btn b = buttons[picked];
+            float px = Math.max(0, Math.min(getWidth(), e.getX(0) + grabDx));
+            float py = Math.max(0, Math.min(getHeight(), e.getY(0) + grabDy));
+            b.fx = px / getWidth();
+            b.fy = py / getHeight();
+            invalidate();
+        }
+    }
+
+    private void tool(int i) {
+        switch (TOOLS[i]) {
+            case "-":
+            case "+":
+                if (picked >= 0) {
+                    Btn b = buttons[picked];
+                    b.fs = Math.max(0.5f, Math.min(2.2f, b.fs * (TOOLS[i].equals("+") ? 1.1f : 1 / 1.1f)));
+                }
+                break;
+            case "RESET":
+                for (Btn b : buttons) {
+                    b.fx = -1;
+                    b.fy = -1;
+                    b.fs = 1f;
+                }
+                picked = -1;
+                break;
+            default:
+                saveLayout();
+                editing = false;
+                picked = -1;
+                break;
+        }
+        invalidate();
     }
 
     /** Lets go of everything (a menu opened, the app was left). */

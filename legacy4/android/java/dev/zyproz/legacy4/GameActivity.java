@@ -121,6 +121,12 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             public void controlsChanged() {
                 applyControls();
             }
+
+            @Override
+            public void editLayout() {
+                GameActivity.this.closeMods();
+                pad.startEdit();
+            }
         });
         int w = (int) (getResources().getDisplayMetrics().widthPixels * 0.86f);
         int h = (int) (getResources().getDisplayMetrics().heightPixels * 0.9f);
@@ -250,6 +256,7 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             pad.opacity = prefs.getFloat("opacity", 0.55f);
             pad.scale = prefs.getFloat("size", 1f);
             pad.aimToggle = prefs.getBoolean("aim_toggle", true);
+            pad.loadLayout();
             pad.invalidate();
         }
         // The controller's turn speed: the game's own gamepad rates, in degrees per second at full stick.
@@ -334,6 +341,11 @@ public class GameActivity extends NativeActivity implements InputManager.InputDe
             broadcastLock.release();
         }
         super.onDestroy();
+        // The game itself lives for the whole process (one engine per process): closed for good, the process ends
+        // with it, so the next start is a fresh one. Leaving the app with the home button only pauses (no destroy).
+        if (isFinishing()) {
+            System.exit(0);
+        }
     }
 
     @Override

@@ -77,7 +77,8 @@ fn journal_tail(media: &Path, lines: usize) -> String {
     all[all.len().saturating_sub(lines)..].join("\n")
 }
 
-/// The window is gone (home button, another app): 0.1 cannot rebuild the graphics yet, so it stops cleanly.
+/// Stops the game cleanly (0.1 to 0.16 did it when the app was left; now the game waits: `set_paused`).
+#[allow(dead_code)]
 pub fn leave() -> ! {
     if let Some(media) = MEDIA.get() {
         let _ = fs::remove_file(media.join("running.txt"));
@@ -239,7 +240,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.16: starting with {args:?}");
+    eprintln!("Legacy 4 0.17: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 
@@ -653,6 +654,27 @@ pub extern "system" fn Java_dev_zyproz_legacy4_GameActivity_nativeCommandEnd(
             p.commands.push(line);
         }
     });
+}
+
+/// The app is in the background (home button, another app): the game waits without a window.
+static PAUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn paused() -> bool {
+    PAUSED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Going to the background or coming back. While in the background, Android may end the app at any time to free
+/// memory: that is not a crash, so `running.txt` goes, and comes back with the game.
+pub fn set_paused(on: bool) {
+    PAUSED.store(on, std::sync::atomic::Ordering::Relaxed);
+    if let Some(media) = MEDIA.get() {
+        if on {
+            let _ = fs::remove_file(media.join("running.txt"));
+        } else {
+            let _ = fs::write(media.join("running.txt"), "running");
+        }
+    }
+    eprintln!("Legacy 4: {}", if on { "in the background" } else { "back in the app" });
 }
 
 /// UNLOCK ALL, once used, stays on: `unlock-all.txt` in the app folder. 0 = not read yet, 1 = off, 2 = on.

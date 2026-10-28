@@ -90,16 +90,29 @@ edit(app,
      "            }\n"
      "            return;\n"
      "        }\n"
+     "        // Paused (the app is in the background): no surface to draw on or resize.\n"
+     "        #[cfg(target_os = \"android\")]\n"
+     "        if crate::android::paused()\n"
+     "            && matches!(ev, WindowEvent::RedrawRequested | WindowEvent::Resized(_))\n"
+     "        {\n"
+     "            return;\n"
+     "        }\n"
      "        let Some(st) = self.st.as_mut() else { return };\n",
      "touch as mouse")
 edit(app,
      "    fn user_event(&mut self, el: &ActiveEventLoop, ready: Ready) {\n",
+     "    // Legacy 4: leaving the app (home button, another app) pauses the game: the window's surface goes with the\n"
+     "    // window, and a new one is made from the new window when the player comes back (resumed).\n"
      "    #[cfg(target_os = \"android\")]\n"
      "    fn suspended(&mut self, _: &ActiveEventLoop) {\n"
      "        if let Some(st) = self.st.as_mut() {\n"
      "            let _ = st.input.save();\n"
+     "            if let Some(r) = st.renderer.as_mut() {\n"
+     "                record_gpu(&mut st.gpu_ms, r.flush_gpu_times());\n"
+     "            }\n"
+     "            st.surface = None;\n"
      "        }\n"
-     "        crate::android::leave();\n"
+     "        crate::android::set_paused(true);\n"
      "    }\n\n"
      "    fn user_event(&mut self, el: &ActiveEventLoop, ready: Ready) {\n",
      "stop when the app is left")
@@ -595,7 +608,10 @@ edit("crates/net/src/view.rs",
      "snapshots around a time")
 edit("crates/client/src/netplay.rs",
      "            let ps = snap.ps.clone();\n            self.kick.clear();\n",
-     "            let ps = l4_follow_ps(&self.net.snaps, &snap, st);\n            self.kick.clear();\n",
+     "            let ps = l4_follow_ps(&self.net.snaps, &snap, st);\n"
+     "            // Legacy 4: a slowed replay (the final killcam) slows the bodies, the gun and the effects with it.\n"
+     "            let dt = dt * l4_replay_rate(&snap);\n"
+     "            self.kick.clear();\n",
      "smooth followed view")
 with open("crates/client/src/netplay.rs", "a") as f:
     f.write(r"""
@@ -627,6 +643,29 @@ fn l4_follow_ps(
         a.ps.view_height_current + (b.ps.view_height_current - a.ps.view_height_current) * f;
     ps.weapon_pos_frac = a.ps.weapon_pos_frac + (b.ps.weapon_pos_frac - a.ps.weapon_pos_frac) * f;
     ps
+}
+
+/// Legacy 4: how fast the replay being watched runs (1 live and in a normal killcam, about 0.35 in the final
+/// killcam's slow motion), read from how the snapshots' replay moment moves against their server time, eased.
+fn l4_replay_rate(snap: &net::snapshot::Snapshot) -> f32 {
+    static LAST: std::sync::Mutex<(i32, i32, f32)> = std::sync::Mutex::new((i32::MIN, 0, 1.0));
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    let archive = snap.follow.map_or(0, |f| f.archive_ms as i32);
+    if archive <= 0 {
+        *last = (i32::MIN, 0, 1.0);
+        return 1.0;
+    }
+    let replay = snap.server_time - archive;
+    let (t0, r0, mut rate) = *last;
+    if snap.server_time == t0 {
+        return rate;
+    }
+    if t0 != i32::MIN && snap.server_time > t0 {
+        let measured = ((replay - r0) as f32 / (snap.server_time - t0) as f32).clamp(0.05, 1.0);
+        rate += (measured - rate) * 0.5;
+    }
+    *last = (snap.server_time, replay, rate);
+    rate
 }
 """)
 print("ok  smooth followed view (function)")
@@ -674,5 +713,25 @@ edit("crates/client/src/ui/mod.rs",
      "        self.menus.iter().any(|m| m.items.iter().any(|it| it.editing))\n"
      "    }\n\n",
      "text field in use")
+
+# 25. app.rs: back in the app after leaving it: a new surface from the new window, and the game goes on.
+edit(app,
+     "    fn resumed(&mut self, el: &ActiveEventLoop) {\n        if self.st.is_some() {\n            return;\n        }\n",
+     "    fn resumed(&mut self, el: &ActiveEventLoop) {\n        if self.st.is_some() {\n"
+     "            #[cfg(target_os = \"android\")]\n"
+     "            if crate::android::paused()\n"
+     "                && let Some(st) = self.st.as_mut()\n"
+     "            {\n"
+     "                match fresh_surface(st) {\n"
+     "                    Ok(()) => {\n"
+     "                        crate::android::set_paused(false);\n"
+     "                        st.window.request_redraw();\n"
+     "                        tracing::info!(\"legacy4: back in the app, new surface\");\n"
+     "                    }\n"
+     "                    Err(e) => tracing::error!(error = %e, \"legacy4: no surface after coming back\"),\n"
+     "                }\n"
+     "            }\n"
+     "            return;\n        }\n",
+     "back in the app")
 
 print("patch_client: all changes applied")

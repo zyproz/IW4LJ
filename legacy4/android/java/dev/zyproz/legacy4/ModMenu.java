@@ -31,10 +31,13 @@ public class ModMenu extends LinearLayout {
         void closeMods();
 
         void controlsChanged();
+
+        /** Closes the menu and lets the player move and resize the touch buttons. */
+        void editLayout();
     }
 
     private static final int GREEN = Color.rgb(57, 255, 20);
-    private static final String[] TABS = {"TRICKSHOT", "BOTS", "LAN", "GRAPHICS", "CONTROLS", "ACCOUNT"};
+    private static final String[] TABS = {"TRICKSHOT", "BOTS", "LAN", "GRAPHICS", "CONTROLS", "TOUCH", "ACCOUNT"};
     private static final String[][] MAPS = {
             {"Backlot", "mp_backlot"}, {"Bloc", "mp_bloc"}, {"Bog", "mp_bog"}, {"Broadcast", "mp_broadcast"},
             {"Chinatown", "mp_carentan"}, {"Countdown", "mp_countdown"}, {"Crash", "mp_crash"},
@@ -121,6 +124,9 @@ public class ModMenu extends LinearLayout {
             case "CONTROLS":
                 controls();
                 break;
+            case "TOUCH":
+                touch();
+                break;
             default:
                 account();
                 break;
@@ -203,15 +209,8 @@ public class ModMenu extends LinearLayout {
 
     private void controls() {
         float speed = prefs.getFloat("look_speed", 0.15f);
-        float opacity = prefs.getFloat("opacity", 0.55f);
-        float size = prefs.getFloat("size", 1f);
-        hint(String.format(java.util.Locale.US, "Look speed %.2f   Buttons visibility %d%%   Buttons size %d%%",
-                speed, Math.round(opacity * 100), Math.round(size * 100)));
+        hint(String.format(java.util.Locale.US, "Touch look speed %.2f", speed));
         row(setting("LOOK SLOWER", "look_speed", speed / 1.15f), setting("LOOK FASTER", "look_speed", speed * 1.15f));
-        row(setting("BUTTONS FAINTER", "opacity", Math.max(0.15f, opacity - 0.1f)),
-                setting("BUTTONS BRIGHTER", "opacity", Math.min(1f, opacity + 0.1f)));
-        row(setting("BUTTONS SMALLER", "size", Math.max(0.7f, size - 0.1f)),
-                setting("BUTTONS BIGGER", "size", Math.min(1.4f, size + 0.1f)));
         int stick = prefs.getInt("stick_sens", 8);
         hint("Controller turn speed: " + stick + " / 20   (" + stickYaw(stick) + " degrees per second)");
         row(intSetting("STICK SLOWER", "stick_sens", Math.max(1, stick - 1)),
@@ -220,6 +219,35 @@ public class ModMenu extends LinearLayout {
         hint("Controller speed while aiming down the sights: " + ads * 10 + "%  (on top of the zoom's own slowdown)");
         row(intSetting("AIM SLOWER", "ads_sens", Math.max(1, ads - 1)),
                 intSetting("AIM FASTER", "ads_sens", Math.min(15, ads + 1)));
+        hint("Controller: plug it in or pair it over Bluetooth, the buttons hide themselves.");
+    }
+
+    /** The touch buttons: where they are (layout editor), how big and how visible, and how AIM works. */
+    private void touch() {
+        hint("Move and resize each button: drag it, then - / + for its size, DONE to save.");
+        Button edit = button("EDIT LAYOUT", false);
+        edit.setOnClickListener(v -> host.editLayout());
+        Button reset = button("RESET LAYOUT", false);
+        reset.setOnClickListener(v -> {
+            SharedPreferences.Editor ed = prefs.edit();
+            for (String k : prefs.getAll().keySet()) {
+                if (k.startsWith("btn")) {
+                    ed.remove(k);
+                }
+            }
+            ed.apply();
+            host.controlsChanged();
+            note.setText("Touch layout back to default");
+        });
+        row(edit, reset);
+        float opacity = prefs.getFloat("opacity", 0.55f);
+        float size = prefs.getFloat("size", 1f);
+        hint(String.format(java.util.Locale.US, "Buttons visibility %d%%   Buttons size %d%%",
+                Math.round(opacity * 100), Math.round(size * 100)));
+        row(setting("BUTTONS FAINTER", "opacity", Math.max(0.15f, opacity - 0.1f)),
+                setting("BUTTONS BRIGHTER", "opacity", Math.min(1f, opacity + 0.1f)));
+        row(setting("BUTTONS SMALLER", "size", Math.max(0.7f, size - 0.1f)),
+                setting("BUTTONS BIGGER", "size", Math.min(1.4f, size + 0.1f)));
         boolean toggle = prefs.getBoolean("aim_toggle", true);
         Button aim = button(toggle ? "AIM: TAP TO SWITCH (ON)" : "AIM: HOLD (ON)", false);
         aim.setOnClickListener(v -> {
@@ -228,7 +256,6 @@ public class ModMenu extends LinearLayout {
             show(tab);
         });
         row(aim);
-        hint("Controller: plug it in or pair it over Bluetooth, the buttons hide themselves.");
     }
 
     private void account() {

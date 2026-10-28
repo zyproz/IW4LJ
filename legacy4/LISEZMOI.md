@@ -144,3 +144,13 @@ que rejoue la killcam normale (`archive.rs`, 15 s) :
   l'inclure : `steam/build.gradle.kts` ajoute `org.bouncycastle:bcprov-jdk18on:1.80`, et `SteamActivity`
   (`installCrypto`) remplace le fournisseur « BC » réduit d'Android par le complet, dans le processus de l'appli
   seulement. Les champs de l'écran Steam sont exclus du remplissage automatique. Même correctif que Legacy Warfare 3.3.
+
+## 0.17
+- Killcam au ralenti : le client lit la vitesse du replay dans les snapshots (`l4_replay_rate`, étape 21) et ralentit
+  avec elle les animations des corps, de l'arme et les effets (le `dt` de la vue suivie) : tout bouge au même rythme.
+- Retour dans l'appli : quitter l'appli (accueil, autre appli) met le jeu en pause au lieu de l'arrêter. La surface
+  graphique est lâchée (`suspended`) et refaite depuis la nouvelle fenêtre au retour (`resumed`, étape 25,
+  `fresh_surface`). `running.txt` est retiré pendant la pause (Android peut fermer l'appli en fond : pas un crash).
+  Fermer l'appli pour de bon (liste des applis récentes) termine le processus.
+- Onglet TOUCH du menu Legacy : EDIT LAYOUT (glisser chaque bouton, - / + pour sa taille, RESET, DONE enregistre),
+  RESET LAYOUT, visibilité et taille des boutons, AIM interrupteur/maintenu (`TouchPad.java`, préférences `btnN_x/y/s`).
