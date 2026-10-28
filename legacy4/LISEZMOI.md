@@ -137,3 +137,10 @@ que rejoue la killcam normale (`archive.rs`, 15 s) :
 - Clavier : quand un champ texte du jeu est en cours (nom d'un nouveau profil, mot de passe...), une petite fenêtre
   Android s'ouvre avec le clavier du téléphone ; OK remplace le texte du champ puis valide (Entrée), Annuler fait
   Échap. `android.rs` : `set_text_field`, `nativeTextField`, `nativeTextKey` ; `ui/mod.rs` : `l4_editing` (étape 24).
+
+## 0.16
+- Steam (écran partagé Legacy Mobile) : la connexion (QR et compte) échouait avec « ClassNotFoundException:
+  org.bouncycastle.jce.provider.BouncyCastleProvider ». JavaSteam 1.8.0 charge Bouncy Castle par son nom sans
+  l'inclure : `steam/build.gradle.kts` ajoute `org.bouncycastle:bcprov-jdk18on:1.80`, et `SteamActivity`
+  (`installCrypto`) remplace le fournisseur « BC » réduit d'Android par le complet, dans le processus de l'appli
+  seulement. Les champs de l'écran Steam sont exclus du remplissage automatique. Même correctif que Legacy Warfare 3.3.

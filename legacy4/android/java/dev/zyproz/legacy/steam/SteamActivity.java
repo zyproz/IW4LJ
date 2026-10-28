@@ -97,6 +97,8 @@ public class SteamActivity extends Activity {
         target.mkdirs();
         log = new File(target.getParentFile(), "steam-log.txt");
         log.delete();
+        installCrypto();
+        getWindow().getDecorView().setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
 
         box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -487,6 +489,24 @@ public class SteamActivity extends Activity {
     private void setStatus(String s) {
         note(s);
         runOnUiThread(() -> status.setText(s));
+    }
+
+    /**
+     * JavaSteam's crypto asks for the "BC" provider. Android's own is a cut-down Bouncy Castle that refuses most
+     * algorithms since Android 9: the full one (bcprov) replaces it, in this app's process only, before
+     * JavaSteam's CryptoHelper is used.
+     */
+    private void installCrypto() {
+        try {
+            java.security.Provider current = java.security.Security.getProvider("BC");
+            if (!(current instanceof org.bouncycastle.jce.provider.BouncyCastleProvider)) {
+                java.security.Security.removeProvider("BC");
+                java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+            }
+            note("Crypto: " + java.security.Security.getProvider("BC"));
+        } catch (Throwable e) {
+            note("Crypto setup failed: " + stack(e));
+        }
     }
 
     private synchronized void note(String s) {
