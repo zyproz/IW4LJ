@@ -97,6 +97,9 @@ public class SteamActivity extends Activity {
         target.mkdirs();
         log = new File(target.getParentFile(), "steam-log.txt");
         log.delete();
+        installCrypto();
+        // The password is sent only to Steam: no "save to Samsung Pass / Google" offer for these fields.
+        getWindow().getDecorView().setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
 
         box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -219,6 +222,24 @@ public class SteamActivity extends Activity {
     }
 
     // ---------- Steam ----------
+
+    /**
+     * JavaSteam encrypts with the provider named "BC" (Bouncy Castle). Android has its own cut-down "BC" that
+     * refuses most algorithms to apps since Android 9, so the full one shipped in the APK takes its place, in
+     * this app's process only. Must run before JavaSteam's CryptoHelper is first used.
+     */
+    private void installCrypto() {
+        try {
+            java.security.Provider current = java.security.Security.getProvider("BC");
+            if (!(current instanceof org.bouncycastle.jce.provider.BouncyCastleProvider)) {
+                java.security.Security.removeProvider("BC");
+                java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+            }
+            note("Crypto: " + java.security.Security.getProvider("BC"));
+        } catch (Throwable e) {
+            note("Crypto setup failed: " + stack(e));
+        }
+    }
 
     private void start(String account, String password) {
         Thread t = new Thread(() -> {
