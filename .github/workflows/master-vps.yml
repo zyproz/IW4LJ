@@ -1,0 +1,53 @@
+# Compile le serveur des salons IW4L (iw4l-master : liste des parties + relais) pour un VPS Linux x86_64
+# (Hetzner CPX02, Ubuntu 24.04), et le publie dans la release GitHub "iw4l-master-vps".
+# Le VPS le télécharge avec vps/legacy-master.sh (install ou update).
+# Lancer : gh workflow run master-vps.yml -R zyproz/IW4LJ
+
+name: Serveur VPS (iw4l-master)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  master:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "IW4LJ-Android -> target"
+          key: master-vps
+
+      - name: Compiler iw4l-master (Linux x86_64, statique)
+        working-directory: IW4LJ-Android
+        run: |
+          set -euo pipefail
+          # Same build as `cargo xtask master install`: glibc linked statically, runs on any Linux x86_64.
+          RUSTFLAGS="-C target-feature=+crt-static" \
+            cargo build -p iw4l-master --release --locked --target x86_64-unknown-linux-gnu
+          B=target/x86_64-unknown-linux-gnu/release/iw4l-master
+          file "$B"
+          "$B" print-unit --name test --port 4433 --exec /x --cert /c --key /k >/dev/null
+          cp "$B" "$GITHUB_WORKSPACE/iw4l-master-x86_64"
+          sha256sum "$GITHUB_WORKSPACE/iw4l-master-x86_64" | tee "$GITHUB_WORKSPACE/iw4l-master-x86_64.sha256"
+
+      - name: Publier dans la release iw4l-master-vps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          NOTES="iw4l-master pour le VPS, compilé depuis ${GITHUB_SHA}. Installer : vps/legacy-master.sh"
+          if gh release view iw4l-master-vps >/dev/null 2>&1; then
+            gh release upload iw4l-master-vps iw4l-master-x86_64 iw4l-master-x86_64.sha256 --clobber
+            gh release edit iw4l-master-vps --notes "$NOTES"
+          else
+            gh release create iw4l-master-vps iw4l-master-x86_64 iw4l-master-x86_64.sha256 \
+              --title "Serveur VPS (iw4l-master)" --notes "$NOTES" --prerelease
+          fi
