@@ -74,6 +74,12 @@ uses whichever already holds `zone/`. `mw2/zone/english/common_mp.ff` must exist
 
 ### LAN and online (Android ⇄ Android, Android ⇄ iPhone)
 
+**Online (Legacy Warfare 3.5 and later):** nothing to set up. The APK has the Legacy Mobile
+server built in: create a game, and everyone sees it in **FIND LOBBIES** and can join, on Wi-Fi
+or 4G, with no Tailscale and no router settings. For LAN only (no Internet, or the server is
+down), put an empty file named `lan.txt` in `Android/media/dev.iw4j.iw4l/` and restart the game;
+delete it to go back online.
+
 Same Wi-Fi: one phone opens the mod menu → **LAN** → *Host LAN game*, the others
 *Join LAN game* (or *Join by IP* and type the host's address, shown on the host's
 LAN tab). Both phones must run builds from the same revision of this repository,

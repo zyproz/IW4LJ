@@ -155,6 +155,18 @@ fn main() {
                 }
             }
         }
+        // Legacy Warfare online: the server list and relay on the Legacy Mobile VPS
+        // (`vps/legacy-master.sh`), built in so a fresh install lists online lobbies
+        // with nothing to copy. A descriptor the player dropped in still wins (above).
+        // `lan.txt` in Android/media/<pkg>/ keeps the old LAN-only mode (same Wi-Fi,
+        // Tailscale), for play without Internet or while the server is down.
+        if std::env::var_os("IW4L_COMMUNITY").is_none() && !media.join("lan.txt").exists() {
+            let online = config.join("legacy-warfare.iw4l-server");
+            match std::fs::write(&online, LEGACY_ONLINE) {
+                Ok(()) => std::env::set_var("IW4L_COMMUNITY", &online),
+                Err(error) => eprintln!("online descriptor {}: {error}", online.display()),
+            }
+        }
         // With no community of its own, a phone is its own: the built-in LAN
         // descriptor points the lobby browser at this device's loopback, where
         // the relay runs when the player hosts and a forwarder to the host
@@ -189,6 +201,10 @@ fn main() {
         sim::HostCheats(true),
     );
 }
+
+/// The Legacy Warfare server (Hetzner VPS, port 4433): address, TLS name and the
+/// server's own CA, exactly as `legacy-master.sh install mw2` wrote it.
+const LEGACY_ONLINE: &str = include_str!("legacy_online.toml");
 
 fn first_existing(candidates: &[String]) -> Option<PathBuf> {
     candidates
