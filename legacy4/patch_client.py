@@ -739,7 +739,9 @@ edit(app,
 #     (online.rs; nothing with lan.txt, LAN only).
 edit("crates/client/src/shell.rs",
      "        let masters = self.dvar_get(\"cl_masters\");\n        if !self.st.servers.refresh(source, full, &masters) {\n",
-     "        let masters = l4_masters(self.dvar_get(\"cl_masters\"));\n        if !self.st.servers.refresh(source, full, &masters) {\n",
+     "        let masters = l4_masters(self.dvar_get(\"cl_masters\"));\n"
+     "        tracing::info!(?source, masters = masters.as_str(), \"legacy4: server list refresh\");\n"
+     "        if !self.st.servers.refresh(source, full, &masters) {\n",
      "Internet list asks the Legacy 4 relay")
 edit("crates/client/src/shell.rs",
      "                    && self.dvar_get(\"cl_masters\").trim().is_empty()\n",

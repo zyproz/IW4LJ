@@ -37,7 +37,7 @@ public class ModMenu extends LinearLayout {
     }
 
     private static final int GREEN = Color.rgb(57, 255, 20);
-    private static final String[] TABS = {"TRICKSHOT", "BOTS", "LAN", "GRAPHICS", "CONTROLS", "TOUCH", "ACCOUNT"};
+    private static final String[] TABS = {"TRICKSHOT", "BOTS", "GRAPHICS", "CONTROLS", "TOUCH", "ACCOUNT"};
     private static final String[][] MAPS = {
             {"Backlot", "mp_backlot"}, {"Bloc", "mp_bloc"}, {"Bog", "mp_bog"}, {"Broadcast", "mp_broadcast"},
             {"Chinatown", "mp_carentan"}, {"Countdown", "mp_countdown"}, {"Crash", "mp_crash"},

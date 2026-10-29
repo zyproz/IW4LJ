@@ -175,3 +175,10 @@ parties et le relais. Rien à installer ni régler pour les joueurs, marche en 4
   arrive au serveur depuis un socket à lui, avec l'adresse du téléphone (jamais loopback : loopback = l'hôte).
 - `cl_masters` vide = le relais intégré (`2.28.68.135:4435`) ; `lan.txt` dans le dossier de l'appli = LAN seulement.
   Le menu Rejoindre s'ouvre sur la liste Internet (`ui_netSource` 1) ; Local reste à un clic (étapes 26 et 27).
+
+## 0.20
+- Héberger avec le menu du jeu (Créer un serveur) suffit : le lien vers le relais cherche le serveur sur les 4 ports
+  qu'un serveur d'écoute peut prendre (28960 à 28963), plus seulement 28960.
+- La liste Internet demande toujours le relais quand `cl_masters` est vide (avant, « No master server set » si le
+  lien n'était pas encore parti) ; `journal.txt` note chaque actualisation (« legacy4: server list refresh »).
+- Onglet LAN retiré du menu Legacy : on héberge et on rejoint avec les menus du jeu.

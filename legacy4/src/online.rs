@@ -22,8 +22,8 @@ use std::time::{Duration, Instant};
 pub const RELAY: &str = "2.28.68.135:4435";
 const MAGIC: &[u8; 4] = b"L4R1";
 const OOB: [u8; 4] = [0xff; 4];
-/// The port the phone's listen server uses (`net_port`).
-const GAME_PORT: u16 = 28960;
+/// The ports a listen server takes (the first free one, `listen::free_standard_port`).
+const GAME_PORTS: [u16; 4] = [28960, 28961, 28962, 28963];
 /// A player socket with nothing from the match for this long is closed.
 const PLAYER_IDLE: Duration = Duration::from_secs(90);
 
@@ -31,7 +31,8 @@ static MASTER: OnceLock<String> = OnceLock::new();
 
 /// What `cl_masters` is when the player set none: the relay, or nothing with `lan.txt` (LAN only).
 pub fn master() -> String {
-    MASTER.get().cloned().unwrap_or_default()
+    // Not started yet (or never): the relay all the same; only lan.txt, read at start, turns it off.
+    MASTER.get().cloned().unwrap_or_else(|| RELAY.to_owned())
 }
 
 /// Starts the link in the background, unless `lan.txt` is in `media`.
@@ -61,20 +62,22 @@ fn own_ip(relay: SocketAddr) -> IpAddr {
         .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
 }
 
-/// The match's `hostname` when this phone runs one (it answers `getinfo` on its port), else `None`.
-fn hosting(probe: &UdpSocket) -> Option<String> {
+/// The port and `hostname` of the match this phone runs (its server answers `getinfo`), else `None`.
+fn hosting(probe: &UdpSocket) -> Option<(u16, String)> {
+    GAME_PORTS.into_iter().find_map(|port| hosting_on(probe, port).map(|name| (port, name)))
+}
+
+fn hosting_on(probe: &UdpSocket, port: u16) -> Option<String> {
     let mut packet = OOB.to_vec();
     packet.extend_from_slice(b"getinfo 4");
-    probe
-        .send_to(&packet, (Ipv4Addr::LOCALHOST, GAME_PORT))
-        .ok()?;
+    probe.send_to(&packet, (Ipv4Addr::LOCALHOST, port)).ok()?;
     let mut buf = [0u8; 2048];
     let deadline = Instant::now() + Duration::from_millis(600);
     while Instant::now() < deadline {
         let Ok((n, from)) = probe.recv_from(&mut buf) else {
             return None;
         };
-        if from.port() != GAME_PORT {
+        if from.port() != port {
             continue;
         }
         if n < 4 || buf[..4] != OOB {
@@ -103,6 +106,8 @@ struct Link {
     players: Mutex<HashMap<u16, Arc<UdpSocket>>>,
     /// The address players come from (this phone's own).
     ip: Mutex<IpAddr>,
+    /// The port of the match.
+    port: std::sync::atomic::AtomicU16,
 }
 
 impl Link {
@@ -130,7 +135,8 @@ impl Link {
             }
         };
         let ip = sock.local_addr().map(|a| a.ip()).unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
-        let _ = sock.send_to(payload, SocketAddr::new(ip, GAME_PORT));
+        let port = self.port.load(std::sync::atomic::Ordering::Relaxed);
+        let _ = sock.send_to(payload, SocketAddr::new(ip, port));
     }
 
     /// The match's answers to one player, back through the relay, until the player goes quiet.
@@ -139,7 +145,7 @@ impl Link {
         let mut out = Vec::with_capacity(2048);
         loop {
             match sock.recv_from(&mut buf) {
-                Ok((n, from)) if from.port() == GAME_PORT => {
+                Ok((n, from)) if from.port() == self.port.load(std::sync::atomic::Ordering::Relaxed) => {
                     out.clear();
                     out.extend_from_slice(MAGIC);
                     out.push(b'D');
@@ -188,6 +194,7 @@ fn run(relay: &str) {
         relay,
         players: Mutex::new(HashMap::new()),
         ip: Mutex::new(own_ip(relay)),
+        port: std::sync::atomic::AtomicU16::new(GAME_PORTS[0]),
     });
     // What the relay sends: players' packets, and the port the match got.
     let reader = link.clone();
@@ -223,7 +230,8 @@ fn run(relay: &str) {
     let mut was_hosting = false;
     loop {
         match hosting(&probe) {
-            Some(name) => {
+            Some((port, name)) => {
+                link.port.store(port, std::sync::atomic::Ordering::Relaxed);
                 if !was_hosting {
                     *link.ip.lock().unwrap_or_else(|e| e.into_inner()) = own_ip(relay);
                     eprintln!("legacy4 online: hosting {name:?}, linking to the relay");
