@@ -163,3 +163,15 @@ que rejoue la killcam normale (`archive.rs`, 15 s) :
   `steam/build.gradle.kts` remplacés par ceux du module commun ; manifeste : 4 autorisations (FOREGROUND_SERVICE,
   FOREGROUND_SERVICE_DATA_SYNC, WAKE_LOCK, POST_NOTIFICATIONS) et le `<service>`. Extras de LaunchActivity inchangés
   (app 7940, dossier cod4).
+
+## 0.19 : jeu en ligne
+Le téléphone de l'hôte fait tourner la partie (serveur d'écoute, comme en LAN) ; le VPS ne fait que la liste des
+parties et le relais. Rien à installer ni régler pour les joueurs, marche en 4G et en Wi-Fi.
+- `vps/legacy4-relay.py` (Python 3, sans dépendance) : port UDP 4435 = liste des parties (protocole master de
+  cod4e : `getchallenge` / `getservers`) et liens des téléphones hôtes ; ports UDP 4440-4499 = une partie chacun.
+  Rien sur disque. `vps/install-relay.sh` : service systemd `legacy4-relay`.
+- `src/online.rs` (appli) : tant que le téléphone héberge (son serveur répond à `getinfo` sur 28960), un paquet de
+  lien part vers le relais toutes les 2 s ; le relais ouvre un port public et y liste la partie. Chaque joueur relayé
+  arrive au serveur depuis un socket à lui, avec l'adresse du téléphone (jamais loopback : loopback = l'hôte).
+- `cl_masters` vide = le relais intégré (`2.28.68.135:4435`) ; `lan.txt` dans le dossier de l'appli = LAN seulement.
+  Le menu Rejoindre s'ouvre sur la liste Internet (`ui_netSource` 1) ; Local reste à un clic (étapes 26 et 27).

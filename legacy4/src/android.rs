@@ -206,6 +206,8 @@ fn android_main(app: AndroidApp) {
     let _ = MEDIA.set(media.clone());
     redirect_output(&media.join("journal.txt"));
     let _ = fs::write(media.join("running.txt"), "starting");
+    // Online play: the link to the Legacy 4 relay while this phone hosts (lan.txt: LAN only).
+    crate::online::start(&media);
 
     let crash = media.join("crash.txt");
     let default_hook = std::panic::take_hook();
@@ -240,7 +242,7 @@ fn android_main(app: AndroidApp) {
             }
         }
     }
-    eprintln!("Legacy 4 0.18: starting with {args:?}");
+    eprintln!("Legacy 4 0.19: starting with {args:?}");
     let _ = APP.set(app);
     let _ = ARGS.set(args);
 

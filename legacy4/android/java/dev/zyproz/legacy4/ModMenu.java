@@ -163,6 +163,7 @@ public class ModMenu extends LinearLayout {
 
     private void lan() {
         hint("HOST: your phone runs the game, friends join you. Mode: " + modeName(gametype));
+        hint("ONLINE: your match shows up for everyone in Join Game > Source: Internet (4G or Wi-Fi, nothing to set up). Same Wi-Fi: Source: Local.");
         row(mode("SEARCH & DESTROY", "sd"), mode("TEAM DEATHMATCH", "war"), mode("FREE FOR ALL", "dm"));
         LinearLayout r = null;
         for (int i = 0; i < MAPS.length; i++) {

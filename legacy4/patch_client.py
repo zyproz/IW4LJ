@@ -52,7 +52,7 @@ print("ok  Android library target")
 main = "crates/client/src/main.rs"
 edit(main,
      "mod wire;\n",
-     "mod wire;\n#[cfg(target_os = \"android\")]\nmod android;\n",
+     "mod wire;\n#[cfg(target_os = \"android\")]\nmod android;\n#[cfg(target_os = \"android\")]\nmod online;\n",
      "android module")
 edit(main,
      "    let args: Vec<String> = std::env::args().skip(1).collect();\n",
@@ -62,6 +62,7 @@ edit(main,
      "    let args: Vec<String> = std::env::args().skip(1).collect();\n",
      "Android arguments")
 shutil.copy(legacy4 / "src" / "android.rs", "crates/client/src/android.rs")
+shutil.copy(legacy4 / "src" / "online.rs", "crates/client/src/online.rs")
 shutil.copy(legacy4 / "src" / "license_pub.hex", "crates/client/src/license_pub.hex")
 shutil.copy(legacy4 / "menu" / "legacy_banner.rgba", "crates/client/src/legacy_banner.rgba")
 print("ok  android.rs copied")
@@ -733,5 +734,34 @@ edit(app,
      "            }\n"
      "            return;\n        }\n",
      "back in the app")
+
+# 26. shell.rs: online play. With no `cl_masters` set, the Internet list asks the Legacy 4 relay built into the app
+#     (online.rs; nothing with lan.txt, LAN only).
+edit("crates/client/src/shell.rs",
+     "        let masters = self.dvar_get(\"cl_masters\");\n        if !self.st.servers.refresh(source, full, &masters) {\n",
+     "        let masters = l4_masters(self.dvar_get(\"cl_masters\"));\n        if !self.st.servers.refresh(source, full, &masters) {\n",
+     "Internet list asks the Legacy 4 relay")
+edit("crates/client/src/shell.rs",
+     "                    && self.dvar_get(\"cl_masters\").trim().is_empty()\n",
+     "                    && l4_masters(self.dvar_get(\"cl_masters\")).trim().is_empty()\n",
+     "Internet list: no master message")
+with open("crates/client/src/shell.rs", "a") as f:
+    f.write("""
+/// Legacy 4: the masters the Internet list asks: `cl_masters`, else (Android) the Legacy 4 relay, unless `lan.txt`.
+fn l4_masters(set: String) -> String {
+    #[cfg(target_os = "android")]
+    if set.trim().is_empty() {
+        return crate::online::master();
+    }
+    set
+}
+""")
+print("ok  Legacy 4 masters")
+
+# 27. shell.rs: the join menu opens on the Internet list (the online matches); LAN is one click away (Source).
+edit("crates/client/src/shell.rs",
+     "    (\"ui_netSource\", \"0\"),\n",
+     "    (\"ui_netSource\", \"1\"),\n",
+     "join menu opens on Internet")
 
 print("patch_client: all changes applied")
